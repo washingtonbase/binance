@@ -203,11 +203,11 @@ def action():
     args = [
         [f'{current_action}-6', 'LONG', high_ask, round(high_ask * 1.002, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
         [f'{current_action}-5', 'LONG', high_ask, high_ask, 'BUY', 'STOP', int(5.5/high_ask)],
-        [f'{current_action}-4', 'LONG', high_ask, round(high_ask * 0.998, 7), 'SELL', 'STOP', int(5.5/high_ask)],
+        [f'{current_action}-4', 'LONG', high_ask, round(high_ask * 0.998, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
 
         [f'{current_action}-3', 'SHORT', low_bid, round(low_bid * 1.002, 7), 'SELL', 'STOP', int(5.5/low_bid)],
-        [f'{current_action}-2', 'SHORT', low_bid, low_bid, 'BUY', 'STOP', int(5.5/low_bid)],
-        [f'{current_action}-1', 'SHORT', low_bid, round(low_bid * 0.998, 7), 'SELL', 'TAKE_PROFIT', int(5.5/low_bid)],
+        [f'{current_action}-2', 'SHORT', low_bid, low_bid, 'BUY', 'TAKE_PROFIT', int(5.5/low_bid)],
+        [f'{current_action}-1', 'SHORT', low_bid, round(low_bid * 0.998, 7), 'SELL', 'STOP', int(5.5/low_bid)],
 
     ]
     for arg in args:
