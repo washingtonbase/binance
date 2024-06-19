@@ -83,44 +83,7 @@ def trade_stream():
         print("Connection closed")
 
     def on_open(ws):
-        print("Connection established")
-        
-        timestamp = int(time.time()) * 1000
-        price = 0.01164
-        
-        params = {
-            "apiKey": api_key,
-            "newClientOrderId": "fuckyou2",
-            "newOrderRespType": "RESULT",
-            "positionSide": "LONG",
-            "price": price,
-
-            "quantity": int(5.1 / price),
-            "side": "BUY",
-            "symbol": "1000PEPEUSDC",
-            "timeInForce": "GTC",
-            "timestamp": timestamp,
-            "type": "STOP",
-            "stopPrice": price,
-            
-        }
-
-        params = sorted(params.items())
-
-        params = {k: v for k, v in params}
-
-        params['signature'] = hashing(urlencode(params))
-
-        # 构建要发送的 JSON 数据
-        payload = {
-            "id": 'supoerman',
-            "method": "order.place",
-            "params": params,
-        }
-        
-    
-        # 将 JSON 数据转换为字符串并发送
-        trade_ws.send(json.dumps(payload))
+        pass
 
     trade_ws = websocket.WebSocketApp("wss://ws-fapi.binance.com/ws-fapi/v1",
                             on_message=on_message,
@@ -129,8 +92,6 @@ def trade_stream():
     trade_ws.on_open = on_open
 
     trade_ws.run_forever()
-
-
 
 
 def orderbook_stream():
@@ -189,11 +150,6 @@ def trade_stream():
     def on_close(ws):
         print("Connection closed")
 
-
-
-
-
-
     trade_ws = websocket.WebSocketApp("wss://ws-fapi.binance.com/ws-fapi/v1",
                             on_message=on_message,
                             on_error=on_error,
@@ -214,7 +170,9 @@ def func(orderbook_):
     # print([abs((_1 - _2 )/ _1),  abs((_3 - _4 )/ _3)])
     print(_2)
 
-def get_orderbook(func):
+
+
+def get_orderbook():
 
     global trade_ws, condition, orderbook
 
@@ -236,7 +194,7 @@ def get_orderbook(func):
         "method": "depth",
         "params": {
             "symbol": "1000PEPEUSDT",
-            "limit": 500
+            "limit": 100
         }
     }
 
@@ -245,13 +203,13 @@ def get_orderbook(func):
     
     with condition:
         condition.wait()
-        func(orderbook)
+        return [orderbook['result']['bids'][-1][0], orderbook['result']['asks'][-1][0]]
 
 
 current_action = 0
 
-def create_order(newClientOrderId, positionSide, price, side, type):
-
+def create_order(newClientOrderId, positionSide, stopPrice, price, side, type):
+    logger.warn(f'newClientOrderId: {newClientOrderId}, positionSide: {positionSide}, stopPrice: {stopPrice}, price: {price}, side: {side}, type: {type}')
     timestamp = int(time.time()) * 1000
     params = {
         "apiKey": api_key,
@@ -261,12 +219,12 @@ def create_order(newClientOrderId, positionSide, price, side, type):
         "price": price,
 
         "quantity": int(5.1 / price),
-        "side": "BUY",
+        "side": side,
         "symbol": "1000PEPEUSDC",
         "timeInForce": "GTC",
         "timestamp": timestamp,
-        "type": "STOP",
-        "stopPrice": price,
+        "type": type,
+        "stopPrice": stopPrice,
         
     }
 
@@ -282,10 +240,27 @@ def create_order(newClientOrderId, positionSide, price, side, type):
         "method": "order.place",
         "params": params,
     }
+    trade_ws.send(json.dumps(payload))
 
 
 def action():
+    [low_bid, high_ask] = get_orderbook()
+    
     global current_action
+    current_action += 1
+    args = [
+        [f'{current_action}-6', 'LONG', high_ask, high_ask * 1.002, 'SELL', 'TAKE_PROFIT'],
+        [f'{current_action}-5', 'LONG', high_ask, high_ask, 'BUY', 'STOP'],
+        [f'{current_action}-4', 'LONG', high_ask, high_ask * 0.998, 'SELL', 'STOP']
+
+        [f'{current_action}-3', 'SHORT', low_bid, low_bid * 1.002, 'SELL', 'STOP'],
+        [f'{current_action}-2', 'SHORT', low_bid, low_bid, 'BUY', 'STOP']
+        [f'{current_action}-1', 'SHORT', low_bid, low_bid * 0.998, 'SELL', 'TAKE_PROFIT']
+
+    ]
+    for arg in args:
+        create_order(*arg)
+    
 
 
 if __name__ == "__main__":

@@ -73,7 +73,7 @@ def func(orderbook_):
     _4 = float(orderbook['result']['asks'][-1][0])
 
     # print([abs((_1 - _2 )/ _1),  abs((_3 - _4 )/ _3)])
-    print(_2)
+    print(orderbook)
 
 
 def get_orderbook(func):
@@ -98,7 +98,7 @@ def get_orderbook(func):
         "method": "depth",
         "params": {
             "symbol": "1000PEPEUSDT",
-            "limit": 500
+            "limit": 100
         }
     }
 
@@ -112,7 +112,7 @@ def get_orderbook(func):
 
 def thread2():
     time.sleep(2)
-    for i in range(100):
+    for i in range(1):
         get_orderbook(func)
 
 if __name__ == "__main__":
