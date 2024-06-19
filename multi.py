@@ -39,7 +39,7 @@ def hashing(query_string):
 
 accout_ws = None
 trade_ws = None
-
+orderbook_ws = None
 # 订阅账户数据流的函数
 def account_stream():
     listen_key = ''
@@ -130,6 +130,41 @@ def trade_stream():
 
     trade_ws.run_forever()
 
+
+
+
+def orderbook_stream():
+    global orderbook_ws
+
+    def on_error(ws, error):
+        print(f"Error: {error}")
+
+    def on_close(ws):
+        print("Connection closed")
+
+
+    orderbook_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/1000pepeusdc@depth10@100ms",
+                                on_error=on_error,
+                                on_close=on_close)
+    # ws.on_open = on_open
+    
+    orderbook_ws.run_forever()
+
+
+def get_current_orderbook():
+    payload = {
+        "id": "none",
+        "method": "depth",
+        "params": {
+            "symbol": "1000PEPEUSDC"
+        }
+    }
+
+    # 将 JSON 数据转换为字符串并发送
+    trade_ws.send(json.dumps(payload))
+    
+
+
 action_orderid = {}
 orderid_action ={}
 orderid_detail = {}
@@ -142,3 +177,6 @@ if __name__ == "__main__":
 
     t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
     t_trade_stream.start()
+
+    t_orderbook_stream = threading.Thread(target=orderbook_stream, name='订单簿')
+    t_orderbook_stream.start()
