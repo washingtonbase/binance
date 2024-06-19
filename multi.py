@@ -58,10 +58,10 @@ def account_stream():
         logger.info(f"[blue]{message}[/]", extra={"markup": True})
 
     def on_error(ws, error):
-        print(f"Error: {error}")
+        logger.error(error)
 
     def on_close(ws):
-        print("Connection closed")
+        logger.info('closed')
 
     global accout_ws
     accout_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/{listen_key}",
@@ -77,13 +77,13 @@ def trade_stream():
         logger.info(f"[red]{message}[/]", extra={"markup": True})
 
     def on_error(ws, error):
-        print(f"Error: {error}")
+        logger.error(error)
 
     def on_close(ws):
-        print("Connection closed")
+        logger.info('closed')
 
     def on_open(ws):
-        pass
+        action()
 
     trade_ws = websocket.WebSocketApp("wss://ws-fapi.binance.com/ws-fapi/v1",
                             on_message=on_message,
@@ -98,83 +98,32 @@ def orderbook_stream():
     global orderbook_ws
 
     def on_error(ws, error):
-        print(f"Error: {error}")
+        logger.error(error)
 
     def on_close(ws):
-        print("Connection closed")
+        logger.info('closed')
 
 
-    orderbook_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/1000pepeusdc@depth10@100ms",
+    orderbook_ws = websocket.WebSocketApp(f"wss://ws-fapi.binance.com/ws-fapi/v1",
                                 on_error=on_error,
                                 on_close=on_close)
     # ws.on_open = on_open
     
     orderbook_ws.run_forever()
 
-
-def get_current_orderbook():
-    payload = {
-        "id": "none",
-        "method": "depth",
-        "params": {
-            "symbol": "1000PEPEUSDC"
-        }
-    }
-
-    # 将 JSON 数据转换为字符串并发送
-    trade_ws.send(json.dumps(payload))
-    
-
-
 action_orderid = {}
 orderid_action ={}
 orderid_detail = {}
 
 
-trade_ws = None
-
-
 condition = threading.Condition()
 
-
-
-def trade_stream():
-    global trade_ws
-
-    def on_message(ws, message):
-        logger.info(f"[red]{message}[/]", extra={"markup": True})
-
-    def on_error(ws, error):
-        print(f"Error: {error}")
-
-    def on_close(ws):
-        print("Connection closed")
-
-    trade_ws = websocket.WebSocketApp("wss://ws-fapi.binance.com/ws-fapi/v1",
-                            on_message=on_message,
-                            on_error=on_error,
-                            on_close=on_close)
-
-    trade_ws.run_forever()
-
 orderbook = None
-
-def func(orderbook_):
-    orderbook = json.loads(orderbook_)
-    _1 = float(orderbook['result']['bids'][0][0])
-    _2 = float(orderbook['result']['bids'][-1][0])
-
-    _3 = float(orderbook['result']['asks'][0][0])
-    _4 = float(orderbook['result']['asks'][-1][0])
-
-    # print([abs((_1 - _2 )/ _1),  abs((_3 - _4 )/ _3)])
-    print(_2)
-
 
 
 def get_orderbook():
 
-    global trade_ws, condition, orderbook
+    global orderbook_ws, condition, orderbook
 
 
     def on_message(ws, message):
@@ -185,7 +134,7 @@ def get_orderbook():
 
 
 
-    trade_ws.on_message = on_message
+    orderbook_ws.on_message = on_message
 
 
     # 构建要发送的 JSON 数据
@@ -199,16 +148,20 @@ def get_orderbook():
     }
 
     # 将 JSON 数据转换为字符串并发送
-    trade_ws.send(json.dumps(payload))
+    orderbook_ws.send(json.dumps(payload))
     
     with condition:
         condition.wait()
-        return [orderbook['result']['bids'][-1][0], orderbook['result']['asks'][-1][0]]
+        orderbook_obj = json.loads(orderbook)
+        return [
+            float(orderbook_obj['result']['bids'][-1][0]), 
+            float(orderbook_obj['result']['asks'][-1][0])
+        ]
 
 
 current_action = 0
 
-def create_order(newClientOrderId, positionSide, stopPrice, price, side, type):
+def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, quantity):
     logger.warn(f'newClientOrderId: {newClientOrderId}, positionSide: {positionSide}, stopPrice: {stopPrice}, price: {price}, side: {side}, type: {type}')
     timestamp = int(time.time()) * 1000
     params = {
@@ -218,7 +171,7 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type):
         "positionSide": positionSide,
         "price": price,
 
-        "quantity": int(5.1 / price),
+        "quantity": quantity,
         "side": side,
         "symbol": "1000PEPEUSDC",
         "timeInForce": "GTC",
@@ -236,7 +189,7 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type):
 
     # 构建要发送的 JSON 数据
     payload = {
-        "id": timestamp,
+        "id": newClientOrderId,
         "method": "order.place",
         "params": params,
     }
@@ -245,17 +198,16 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type):
 
 def action():
     [low_bid, high_ask] = get_orderbook()
-    
     global current_action
     current_action += 1
     args = [
-        [f'{current_action}-6', 'LONG', high_ask, high_ask * 1.002, 'SELL', 'TAKE_PROFIT'],
-        [f'{current_action}-5', 'LONG', high_ask, high_ask, 'BUY', 'STOP'],
-        [f'{current_action}-4', 'LONG', high_ask, high_ask * 0.998, 'SELL', 'STOP']
+        [f'{current_action}-6', 'LONG', high_ask, round(high_ask * 1.002, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
+        [f'{current_action}-5', 'LONG', high_ask, high_ask, 'BUY', 'STOP', int(5.5/high_ask)],
+        [f'{current_action}-4', 'LONG', high_ask, round(high_ask * 0.998, 7), 'SELL', 'STOP', int(5.5/high_ask)],
 
-        [f'{current_action}-3', 'SHORT', low_bid, low_bid * 1.002, 'SELL', 'STOP'],
-        [f'{current_action}-2', 'SHORT', low_bid, low_bid, 'BUY', 'STOP']
-        [f'{current_action}-1', 'SHORT', low_bid, low_bid * 0.998, 'SELL', 'TAKE_PROFIT']
+        [f'{current_action}-3', 'SHORT', low_bid, round(low_bid * 1.002, 7), 'SELL', 'STOP', int(5.5/low_bid)],
+        [f'{current_action}-2', 'SHORT', low_bid, low_bid, 'BUY', 'STOP', int(5.5/low_bid)],
+        [f'{current_action}-1', 'SHORT', low_bid, round(low_bid * 0.998, 7), 'SELL', 'TAKE_PROFIT', int(5.5/low_bid)],
 
     ]
     for arg in args:
@@ -265,7 +217,7 @@ def action():
 
 if __name__ == "__main__":
     t_account_stream = threading.Thread(target=account_stream, name='账户监听')
-    t_account_stream.start()
+    # t_account_stream.start()
 
     t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
     t_trade_stream.start()
