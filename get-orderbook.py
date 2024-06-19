@@ -76,7 +76,7 @@ def func(orderbook_):
     print(_2)
 
 
-def trigger(func):
+def get_orderbook(func):
 
     global trade_ws, condition, orderbook
 
@@ -113,7 +113,7 @@ def trigger(func):
 def thread2():
     time.sleep(2)
     for i in range(100):
-        trigger(func)
+        get_orderbook(func)
 
 if __name__ == "__main__":
     t1 = threading.Thread(target=trade_stream)

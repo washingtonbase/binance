@@ -170,6 +170,123 @@ orderid_action ={}
 orderid_detail = {}
 
 
+trade_ws = None
+
+
+condition = threading.Condition()
+
+
+
+def trade_stream():
+    global trade_ws
+
+    def on_message(ws, message):
+        logger.info(f"[red]{message}[/]", extra={"markup": True})
+
+    def on_error(ws, error):
+        print(f"Error: {error}")
+
+    def on_close(ws):
+        print("Connection closed")
+
+
+
+
+
+
+    trade_ws = websocket.WebSocketApp("wss://ws-fapi.binance.com/ws-fapi/v1",
+                            on_message=on_message,
+                            on_error=on_error,
+                            on_close=on_close)
+
+    trade_ws.run_forever()
+
+orderbook = None
+
+def func(orderbook_):
+    orderbook = json.loads(orderbook_)
+    _1 = float(orderbook['result']['bids'][0][0])
+    _2 = float(orderbook['result']['bids'][-1][0])
+
+    _3 = float(orderbook['result']['asks'][0][0])
+    _4 = float(orderbook['result']['asks'][-1][0])
+
+    # print([abs((_1 - _2 )/ _1),  abs((_3 - _4 )/ _3)])
+    print(_2)
+
+def get_orderbook(func):
+
+    global trade_ws, condition, orderbook
+
+
+    def on_message(ws, message):
+        with condition:
+            global orderbook
+            orderbook = message
+            condition.notify()
+
+
+
+    trade_ws.on_message = on_message
+
+
+    # 构建要发送的 JSON 数据
+    payload = {
+        "id": "51e2affb-0aba-4821-ba75-f2625006eb43",
+        "method": "depth",
+        "params": {
+            "symbol": "1000PEPEUSDT",
+            "limit": 500
+        }
+    }
+
+    # 将 JSON 数据转换为字符串并发送
+    trade_ws.send(json.dumps(payload))
+    
+    with condition:
+        condition.wait()
+        func(orderbook)
+
+
+current_action = 0
+
+def create_order(newClientOrderId, positionSide, price, side, type):
+
+    timestamp = int(time.time()) * 1000
+    params = {
+        "apiKey": api_key,
+        "newClientOrderId": newClientOrderId,
+        "newOrderRespType": "RESULT",
+        "positionSide": positionSide,
+        "price": price,
+
+        "quantity": int(5.1 / price),
+        "side": "BUY",
+        "symbol": "1000PEPEUSDC",
+        "timeInForce": "GTC",
+        "timestamp": timestamp,
+        "type": "STOP",
+        "stopPrice": price,
+        
+    }
+
+    params = sorted(params.items())
+
+    params = {k: v for k, v in params}
+
+    params['signature'] = hashing(urlencode(params))
+
+    # 构建要发送的 JSON 数据
+    payload = {
+        "id": timestamp,
+        "method": "order.place",
+        "params": params,
+    }
+
+
+def action():
+    global current_action
+
 
 if __name__ == "__main__":
     t_account_stream = threading.Thread(target=account_stream, name='账户监听')
