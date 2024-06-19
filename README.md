@@ -1,1 +1,1 @@
-# binance
+# binance-api
