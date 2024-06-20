@@ -75,6 +75,12 @@ def trade_stream():
 
     def on_message(ws, message):
         logger.info(f"[red]{message}[/]", extra={"markup": True})
+        timestamp = time.time_ns() / 1000000
+        message_ = json.loads(message)
+        if 'result' in message_:
+            # logger.info(message_['result']['updateTime'] - timestamp)  
+            logger.info(float(message_['result']['clientOrderId']) - float(message_['result']['updateTime']))
+
 
     def on_error(ws, error):
         logger.error(error)
@@ -143,7 +149,7 @@ def get_orderbook():
         "method": "depth",
         "params": {
             "symbol": "1000PEPEUSDT",
-            "limit": 100
+            "limit": 5
         }
     }
 
@@ -155,7 +161,7 @@ def get_orderbook():
         orderbook_obj = json.loads(orderbook)
         return [
             float(orderbook_obj['result']['bids'][-1][0]), 
-            float(orderbook_obj['result']['asks'][-1][0])
+            float(orderbook_obj['result']['asks'][0][0])
         ]
 
 
@@ -163,23 +169,27 @@ current_action = 0
 
 def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, quantity):
     logger.warn(f'newClientOrderId: {newClientOrderId}, positionSide: {positionSide}, stopPrice: {stopPrice}, price: {price}, side: {side}, type: {type}')
-    timestamp = int(time.time()) * 1000
+    timestamp = int(time.time_ns() / 1000000)
     params = {
         "apiKey": api_key,
-        "newClientOrderId": newClientOrderId,
+        "newClientOrderId": timestamp,
         "newOrderRespType": "RESULT",
         "positionSide": positionSide,
-        "price": price,
 
         "quantity": quantity,
         "side": side,
         "symbol": "1000PEPEUSDC",
         "timeInForce": "GTC",
         "timestamp": timestamp,
-        "type": type,
-        "stopPrice": stopPrice,
+        "type": type
         
     }
+
+    if type in ['STOP', 'TAKE_PROFIT', 'TAKE_PROFIT_MARKET', 'STOP_MARKET']:
+        params['stopPrice'] = stopPrice
+
+    if not type.endswith('MARKET'):
+        params['price'] = price
 
     params = sorted(params.items())
 
@@ -201,13 +211,13 @@ def action():
     global current_action
     current_action += 1
     args = [
-        [f'{current_action}-6', 'LONG', high_ask, round(high_ask * 1.002, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
-        [f'{current_action}-5', 'LONG', high_ask, high_ask, 'BUY', 'STOP', int(5.5/high_ask)],
-        [f'{current_action}-4', 'LONG', high_ask, round(high_ask * 0.998, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
+        [f'{current_action}-6', 'LONG', high_ask, round(high_ask * 1.003, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
+        [f'{current_action}-5', 'LONG', high_ask, round(high_ask * 1.001, 7), 'BUY', 'STOP', int(5.5/high_ask)],
+        # [f'{current_action}-4', 'LONG', high_ask, round(high_ask * 0.998, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
 
-        [f'{current_action}-3', 'SHORT', low_bid, round(low_bid * 1.002, 7), 'SELL', 'STOP', int(5.5/low_bid)],
-        [f'{current_action}-2', 'SHORT', low_bid, low_bid, 'BUY', 'TAKE_PROFIT', int(5.5/low_bid)],
-        [f'{current_action}-1', 'SHORT', low_bid, round(low_bid * 0.998, 7), 'SELL', 'STOP', int(5.5/low_bid)],
+        # [f'{current_action}-3', 'SHORT', low_bid, round(low_bid * 1.002, 7), 'SELL', 'STOP', int(5.5/low_bid)],
+        # [f'{current_action}-2', 'SHORT', low_bid, round(low_bid * 0.99, 7), 'BUY', 'TAKE_PROFIT', int(5.5/low_bid)],
+        # [f'{current_action}-1', 'SHORT', low_bid, round(low_bid * 0.98, 7), 'SELL', 'STOP', int(5.5/low_bid)],
 
     ]
     for arg in args:
@@ -217,7 +227,7 @@ def action():
 
 if __name__ == "__main__":
     t_account_stream = threading.Thread(target=account_stream, name='账户监听')
-    # t_account_stream.start()
+    t_account_stream.start()
 
     t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
     t_trade_stream.start()
