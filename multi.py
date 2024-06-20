@@ -148,8 +148,8 @@ def get_orderbook():
         "id": "51e2affb-0aba-4821-ba75-f2625006eb43",
         "method": "depth",
         "params": {
-            "symbol": "1000PEPEUSDT",
-            "limit": 5
+            "symbol": "1000PEPEUSDc",
+            "limit": 50
         }
     }
 
@@ -211,8 +211,8 @@ def action():
     global current_action
     current_action += 1
     args = [
-        [f'{current_action}-6', 'LONG', high_ask, round(high_ask * 1.003, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
-        [f'{current_action}-5', 'LONG', high_ask, round(high_ask * 1.001, 7), 'BUY', 'STOP', int(5.5/high_ask)],
+        [f'{current_action}-5', 'LONG', high_ask, round(high_ask * 1.000, 7), 'BUY', 'STOP_MARKET', int(5.5/high_ask)],
+        [f'{current_action}-6', 'LONG', high_ask, round(high_ask * 1.0003, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
         # [f'{current_action}-4', 'LONG', high_ask, round(high_ask * 0.998, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
 
         # [f'{current_action}-3', 'SHORT', low_bid, round(low_bid * 1.002, 7), 'SELL', 'STOP', int(5.5/low_bid)],
