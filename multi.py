@@ -149,7 +149,7 @@ def get_orderbook():
         "method": "depth",
         "params": {
             "symbol": "1000PEPEUSDc",
-            "limit": 50
+            "limit": 5
         }
     }
 
@@ -161,7 +161,7 @@ def get_orderbook():
         orderbook_obj = json.loads(orderbook)
         return [
             float(orderbook_obj['result']['bids'][-1][0]), 
-            float(orderbook_obj['result']['asks'][0][0])
+            float(orderbook_obj['result']['asks'][-1][0])
         ]
 
 
