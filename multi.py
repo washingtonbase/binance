@@ -160,8 +160,8 @@ def get_orderbook():
         condition.wait()
         orderbook_obj = json.loads(orderbook)
         return [
-            float(orderbook_obj['result']['bids'][-1][0]), 
-            float(orderbook_obj['result']['asks'][-1][0])
+            float(orderbook_obj['result']['bids'][-3][0]), 
+            float(orderbook_obj['result']['asks'][-3][0])
         ]
 
 
@@ -212,12 +212,12 @@ def action():
     current_action += 1
     args = [
         [f'{current_action}-5', 'LONG', high_ask, round(high_ask * 1.000, 7), 'BUY', 'STOP_MARKET', int(5.5/high_ask)],
-        [f'{current_action}-6', 'LONG', high_ask, round(high_ask * 1.0003, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
-        # [f'{current_action}-4', 'LONG', high_ask, round(high_ask * 0.998, 7), 'SELL', 'TAKE_PROFIT', int(5.5/high_ask)],
+        [f'{current_action}-6', 'LONG', round(high_ask * 1.002, 7), round(high_ask * 1.003, 7), 'SELL', 'TAKE_PROFIT_MARKET', int(5.5/high_ask)],
+        # [f'{current_action}-4', 'LONG', high_ask, round(high_ask * 0.998, 7), 'SELL', 'STOP_MARKET', int(5.5/high_ask)],
 
+        [f'{current_action}-2', 'SHORT', low_bid, round(low_bid * 1.0, 7), 'SELL', 'STOP_MARKET', int(5.5/low_bid)],
+        [f'{current_action}-1', 'SHORT', round(low_bid * 0.998, 7), round(low_bid * 0.9996, 7), 'BUY', 'TAKE_PROFIT_MARKET', int(5.5/low_bid)],
         # [f'{current_action}-3', 'SHORT', low_bid, round(low_bid * 1.002, 7), 'SELL', 'STOP', int(5.5/low_bid)],
-        # [f'{current_action}-2', 'SHORT', low_bid, round(low_bid * 0.99, 7), 'BUY', 'TAKE_PROFIT', int(5.5/low_bid)],
-        # [f'{current_action}-1', 'SHORT', low_bid, round(low_bid * 0.98, 7), 'SELL', 'STOP', int(5.5/low_bid)],
 
     ]
     for arg in args:
