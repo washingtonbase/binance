@@ -40,6 +40,18 @@ def hashing(query_string):
 accout_ws = None
 trade_ws = None
 price_ws = None
+
+open_orders = {
+    'open-long-mid': False,
+    'close-long-high': False,
+    'close-long-low': False,
+    
+    'open-short-mid': False,
+    'close-short-high': False,
+    'close-short-low': False
+}
+
+
 # 订阅账户数据流的函数
 def account_stream():
     listen_key = ''
@@ -56,6 +68,22 @@ def account_stream():
 
     def on_message(ws, message):
         logger.info(f"[blue]{message}[/]", extra={"markup": True})
+        msg = json.loads(message)
+        if msg['e'] == 'ORDER_TRADE_UPDATE':
+            id = msg['o']['c']
+            order_timestamp, open_or_close, long_or_short, high_or_low = id.split('-')
+            
+            if msg['o']['X'] == 'NEW':
+                open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = True
+            if msg['o']['X'] == 'FILLED':
+                open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = False
+        
+            
+            
+            
+            
+            
+        
 
     def on_error(ws, error):
         logger.error(error)
@@ -98,7 +126,6 @@ def trade_stream():
     trade_ws.on_open = on_open
 
     trade_ws.run_forever()
-
 
 def price_stream():
     global price_ws
@@ -206,15 +233,15 @@ def action():
     got_price = get_price()
     global current_action
     current_action += 1
+    timestamp = int(time.time_ns() / 10**6)
     args = [
-        [f'{current_action}-5', 'LONG', round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
-        [f'{current_action}-6', 'LONG', round(got_price * 1.0025, 7), 0, 'SELL', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
-        # [f'{current_action}-4', 'LONG', high_ask, round(high_ask * 0.998, 7), 'SELL', 'STOP_MARKET', int(5.5/high_ask)],
+        [f'{timestamp}-open-long-mid', 'LONG', round(got_price * 1.0002, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
+        [f'{timestamp}-close-long-high', 'LONG', round(got_price * 1.0025, 7), 0, 'SELL', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
+        [f'{timestamp}-close-long-low', 'LONG', round(got_price * 0.9998, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
 
-        [f'{current_action}-2', 'SHORT', round(got_price * 0.9995, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
-        [f'{current_action}-1', 'SHORT', round(got_price * 0.9975, 7), 0, 'BUY', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
-        # [f'{current_action}-3', 'SHORT', low_bid, round(low_bid * 1.002, 7), 'SELL', 'STOP', int(5.5/low_bid)],
-
+        [f'{timestamp}-open-short-mid', 'SHORT', round(got_price * 0.9998, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
+        [f'{timestamp}-close-short-low', 'SHORT', round(got_price * 0.9975, 7), 0, 'BUY', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
+        [f'{timestamp}-close-short-high', 'SHORT',round(got_price * 1.0002, 7), 0, 'BUY', 'STOP-MARKET', int(5.5/got_price)]
     ]
     for arg in args:
         create_order(*arg)
@@ -228,5 +255,5 @@ if __name__ == "__main__":
     t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
     t_trade_stream.start()
 
-    t_orderbook_stream = threading.Thread(target=price_stream, name='订单簿')
-    t_orderbook_stream.start()
+    t_price_stream = threading.Thread(target=price_stream, name='订单簿')
+    t_price_stream.start()
