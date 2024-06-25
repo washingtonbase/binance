@@ -41,6 +41,21 @@ accout_ws = None
 trade_ws = None
 price_ws = None
 
+def get_order_constants():
+    timestamp = int(time.time_ns() / 10**6)
+    got_price = get_price()
+    
+    return {
+        'open-long-mid': [f'{timestamp}-open-long-mid', 'LONG', round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
+        'close-long-high': [f'{timestamp}-close-long-high', 'LONG', round(got_price * 1.0025, 7), 0, 'SELL', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
+        'close-long-low': [f'{timestamp}-close-long-low', 'LONG', round(got_price * 0.9995, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
+        
+        'open-short-mid': [f'{timestamp}-open-short-mid', 'SHORT', round(got_price * 0.9995, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
+        'close-short-low': [f'{timestamp}-close-short-low', 'SHORT', round(got_price * 0.9975, 7), 0, 'BUY', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
+        'close-short-high': [f'{timestamp}-close-short-high', 'SHORT',round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)]
+    }
+
+
 open_orders = {
     'open-long-mid': False,
     'close-long-high': False,
@@ -80,13 +95,23 @@ def account_stream():
             if msg['o']['X'] == 'FILLED':
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = False
         
-        print(open_orders)
+            order_consts = get_order_constants()
+            if open_or_close == 'open':
+                time.sleep(1)
+                
+                if long_or_short == 'long':
+                    if open_orders['close-long-low']:
+                        pass
+                    else:
+                        create_order(order_consts['close-long-low'])
+                
+                if long_or_short == 'short':
+                    if open_orders['close_short_high']:
+                        pass
+                    else:
+                        create_order(order_consts['close_short_high'])
+            
 
-            
-            
-            
-            
-        
 
     def on_error(ws, error):
         logger.error(error)
@@ -124,6 +149,7 @@ def trade_stream():
     trade_ws.on_open = on_open
 
     trade_ws.run_forever()
+
 
 def price_stream():
     global price_ws
@@ -228,19 +254,10 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, q
 
 
 def action():
-    got_price = get_price()
-    global current_action
-    current_action += 1
-    timestamp = int(time.time_ns() / 10**6)
-    args = [
-        [f'{timestamp}-open-long-mid', 'LONG', round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
-        [f'{timestamp}-close-long-high', 'LONG', round(got_price * 1.0025, 7), 0, 'SELL', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
-        [f'{timestamp}-close-long-low', 'LONG', round(got_price * 0.9995, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
-
-        [f'{timestamp}-open-short-mid', 'SHORT', round(got_price * 0.9995, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
-        [f'{timestamp}-close-short-low', 'SHORT', round(got_price * 0.9975, 7), 0, 'BUY', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
-        [f'{timestamp}-close-short-high', 'SHORT',round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)]
-    ]
+    order_constants = get_order_constants()
+    
+    args = order_constants.values()
+    
     for arg in args:
         create_order(*arg)
     
@@ -249,6 +266,8 @@ def action():
 if __name__ == "__main__":
     t_account_stream = threading.Thread(target=account_stream, name='账户监听')
     t_account_stream.start()
+    
+    time.sleep(3)
 
     t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
     t_trade_stream.start()
