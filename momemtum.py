@@ -52,13 +52,13 @@ def get_order_constants():
         got_price = get_price()
     
     return {
-        'open-long-mid': [f'{timestamp}-open-long-mid', 'LONG', round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
-        'close-long-high': [f'{timestamp}-close-long-high', 'LONG', round(got_price * 1.0025, 7), 0, 'SELL', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
-        'close-long-low': [f'{timestamp}-close-long-low', 'LONG', round(got_price * 0.9995, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
+        'open-long-mid': [f'{timestamp}-open-long-mid', 'LONG', round(got_price * (1 + 0.0002), 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
+        'close-long-high': [f'{timestamp}-close-long-high', 'LONG', round(got_price * (1 + 0.001), 7), 0, 'SELL', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
+        'close-long-low': [f'{timestamp}-close-long-low', 'LONG', round(got_price * (1 - 0.0002), 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
         
-        'open-short-mid': [f'{timestamp}-open-short-mid', 'SHORT', round(got_price * 0.9995, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
-        'close-short-low': [f'{timestamp}-close-short-low', 'SHORT', round(got_price * 0.9975, 7), 0, 'BUY', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
-        'close-short-high': [f'{timestamp}-close-short-high', 'SHORT',round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)]
+        'open-short-mid': [f'{timestamp}-open-short-mid', 'SHORT', round(got_price * (1 - 0.0002), 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
+        'close-short-low': [f'{timestamp}-close-short-low', 'SHORT', round(got_price * (1 - 0.001), 7), 0, 'BUY', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
+        'close-short-high': [f'{timestamp}-close-short-high', 'SHORT',round(got_price * (1 + 0.0002), 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)]
     }
 
 
