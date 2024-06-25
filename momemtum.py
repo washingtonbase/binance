@@ -54,6 +54,7 @@ open_orders = {
 
 # 订阅账户数据流的函数
 def account_stream():
+    global open_orders
     listen_key = ''
     BASE_URL = 'https://fapi.binance.com'
 
@@ -69,6 +70,7 @@ def account_stream():
     def on_message(ws, message):
         logger.info(f"[blue]{message}[/]", extra={"markup": True})
         msg = json.loads(message)
+        
         if msg['e'] == 'ORDER_TRADE_UPDATE':
             id = msg['o']['c']
             order_timestamp, open_or_close, long_or_short, high_or_low = id.split('-')
@@ -78,7 +80,8 @@ def account_stream():
             if msg['o']['X'] == 'FILLED':
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = False
         
-            
+        print(open_orders)
+
             
             
             
@@ -103,11 +106,6 @@ def trade_stream():
 
     def on_message(ws, message):
         logger.info(f"[red]{message}[/]", extra={"markup": True})
-        timestamp = time.time_ns() / 1000000
-        message_ = json.loads(message)
-        if 'result' in message_:
-            # logger.info(message_['result']['updateTime'] - timestamp)  
-            logger.info(float(message_['result']['clientOrderId']) - float(message_['result']['updateTime']))
 
 
     def on_error(ws, error):
@@ -195,7 +193,7 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, q
     timestamp = int(time.time_ns() / 1000000)
     params = {
         "apiKey": api_key,
-        "newClientOrderId": timestamp,
+        "newClientOrderId": newClientOrderId,
         "newOrderRespType": "RESULT",
         "positionSide": positionSide,
 
@@ -235,13 +233,13 @@ def action():
     current_action += 1
     timestamp = int(time.time_ns() / 10**6)
     args = [
-        [f'{timestamp}-open-long-mid', 'LONG', round(got_price * 1.0002, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
+        [f'{timestamp}-open-long-mid', 'LONG', round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
         [f'{timestamp}-close-long-high', 'LONG', round(got_price * 1.0025, 7), 0, 'SELL', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
-        [f'{timestamp}-close-long-low', 'LONG', round(got_price * 0.9998, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
+        [f'{timestamp}-close-long-low', 'LONG', round(got_price * 0.9995, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
 
-        [f'{timestamp}-open-short-mid', 'SHORT', round(got_price * 0.9998, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
+        [f'{timestamp}-open-short-mid', 'SHORT', round(got_price * 0.9995, 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
         [f'{timestamp}-close-short-low', 'SHORT', round(got_price * 0.9975, 7), 0, 'BUY', 'TAKE_PROFIT_MARKET', int(5.5/got_price)],
-        [f'{timestamp}-close-short-high', 'SHORT',round(got_price * 1.0002, 7), 0, 'BUY', 'STOP-MARKET', int(5.5/got_price)]
+        [f'{timestamp}-close-short-high', 'SHORT',round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)]
     ]
     for arg in args:
         create_order(*arg)
