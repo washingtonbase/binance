@@ -41,9 +41,15 @@ accout_ws = None
 trade_ws = None
 price_ws = None
 
+
+got_price = None
+
 def get_order_constants():
+    global got_price
     timestamp = int(time.time_ns() / 10**6)
-    got_price = get_price()
+    
+    if not got_price:
+        got_price = get_price()
     
     return {
         'open-long-mid': [f'{timestamp}-open-long-mid', 'LONG', round(got_price * 1.0005, 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
@@ -97,19 +103,22 @@ def account_stream():
         
             order_consts = get_order_constants()
             if open_or_close == 'open':
-                time.sleep(1)
-                
                 if long_or_short == 'long':
                     if open_orders['close-long-low']:
                         pass
                     else:
-                        create_order(order_consts['close-long-low'])
+                        print('not create close long low')
+                        print(open_orders)
+                        
+                        create_order(*order_consts['close-long-low'])
                 
                 if long_or_short == 'short':
-                    if open_orders['close_short_high']:
+                    if open_orders['close-short-high']:
                         pass
                     else:
-                        create_order(order_consts['close_short_high'])
+                        print(open_orders)
+                        print('not close-short-high' )
+                        create_order(*order_consts['close-short-high'])
             
 
 
@@ -256,10 +265,16 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, q
 def action():
     order_constants = get_order_constants()
     
-    args = order_constants.values()
+    keys = order_constants.keys()
     
-    for arg in args:
-        create_order(*arg)
+    for key_ in keys:
+        if key_ in [
+                'open-long-mid',
+                'open-short-mid',
+                'close-long-high',
+                'close-long-low'
+            ]:
+            create_order(*order_constants[key_])
     
 
 
