@@ -98,11 +98,11 @@ def account_stream():
             
             if msg['o']['X'] == 'NEW':
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = True
-            if msg['o']['X'] == 'FILLED':
+            if msg['o']['X'] == 'FILLED' or msg['o']['X'] == 'EXPIRED':
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = False
         
             order_consts = get_order_constants()
-            if open_or_close == 'open':
+            if msg['o']['X'] == 'FILLED' and open_or_close == 'open':
                 if long_or_short == 'long':
                     if open_orders['close-long-low']:
                         pass
@@ -272,7 +272,7 @@ def action():
                 'open-long-mid',
                 'open-short-mid',
                 'close-long-high',
-                'close-long-low'
+                'close-short-low'
             ]:
             create_order(*order_constants[key_])
     
