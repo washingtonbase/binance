@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from urllib.parse import urlencode
 import hmac
 import hashlib
-
+import sys
 # 加载 .env 文件中的环境变量
 dotenv_path = '.env'
 load_dotenv(dotenv_path)
@@ -100,27 +100,25 @@ def account_stream():
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = True
             if msg['o']['X'] == 'FILLED' or msg['o']['X'] == 'EXPIRED':
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = False
-        
-            order_consts = get_order_constants()
-            if msg['o']['X'] == 'FILLED' and open_or_close == 'open':
-                if long_or_short == 'long':
-                    if open_orders['close-long-low']:
-                        pass
-                    else:
-                        print('not create close long low')
-                        print(open_orders)
-                        
-                        create_order(*order_consts['close-long-low'])
-                
-                if long_or_short == 'short':
-                    if open_orders['close-short-high']:
-                        pass
-                    else:
-                        print(open_orders)
-                        print('not close-short-high' )
-                        create_order(*order_consts['close-short-high'])
-            
 
+            match f'{open_or_close}-{long_or_short}-{high_or_low}':
+                case 'open-long-mid':
+                    create_order_unique('close-long-low')
+                case 'open-short-mid':
+                    create_order_unique('close-short-high')
+                case 'close-long-low':
+                    create_order_unique('open-long-mid')
+                case 'close-short-high':
+                    create_order_unique('open-short-mid')
+
+                case 'close-long-high':
+                    # 其实我希望到这里直接终止掉整个程序
+                    sys.exit()
+                    pass
+                
+                    
+
+    
 
     def on_error(ws, error):
         logger.error(error)
@@ -260,6 +258,11 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, q
         "params": params,
     }
     trade_ws.send(json.dumps(payload))
+    
+def create_order_unique(instruction):
+    order_consts = get_order_constants()
+    if not open_orders[instruction]:
+        create_order(*order_consts[instruction])
 
 
 def action():
