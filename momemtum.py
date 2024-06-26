@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from urllib.parse import urlencode
 import hmac
 import hashlib
-import sys
+import os
 # 加载 .env 文件中的环境变量
 dotenv_path = '.env'
 load_dotenv(dotenv_path)
@@ -52,7 +52,7 @@ def get_order_constants():
         got_price = get_price()
     
     mid = 0.0005
-    top = 0.0015
+    top = 0.003
     
     return {
         'open-long-mid': [f'{timestamp}-open-long-mid', 'LONG', round(got_price * (1 + mid), 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
@@ -104,29 +104,31 @@ def account_stream():
             if msg['o']['X'] == 'FILLED' or msg['o']['X'] == 'EXPIRED':
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = False
 
-            match f'{open_or_close}-{long_or_short}-{high_or_low}':
-                case 'open-long-mid':
-                    create_order_unique('close-long-low')
-                case 'open-short-mid':
-                    create_order_unique('close-short-high')
-                case 'close-long-low':
-                    create_order_unique('open-long-mid')
-                case 'close-short-high':
-                    create_order_unique('open-short-mid')
+            if msg['o']['X'] == 'FILLED':
+                match f'{open_or_close}-{long_or_short}-{high_or_low}':
+                    case 'open-long-mid':
+                        create_order_unique('close-long-low')
+                    case 'open-short-mid':
+                        create_order_unique('close-short-high')
+                    case 'close-long-low':
+                        create_order_unique('open-long-mid')
+                    case 'close-short-high':
+                        create_order_unique('open-short-mid')
 
-                case 'close-long-high':
-                    # 其实我希望到这里直接终止掉整个程序
-                    sys.exit()
-                    pass
-                
-                    
+                    case 'close-long-high':
+                        # 其实我希望到这里直接终止掉整个程序
+                        print('exit')
+                        os.exit()
+                    case 'close-short-low':
+                        print('ext')
+                        os.exit()
 
     
 
     def on_error(ws, error):
         logger.error(error)
 
-    def on_close(ws):
+    def on_close(_, __, ___):
         logger.info('closed')
 
     global accout_ws
@@ -285,13 +287,18 @@ def action():
 
 
 if __name__ == "__main__":
-    t_account_stream = threading.Thread(target=account_stream, name='账户监听')
-    t_account_stream.start()
-    
-    time.sleep(3)
-
-    t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
-    t_trade_stream.start()
+    from datetime import datetime
+    print(datetime.now().strftime("%H:%M:%S"))
 
     t_price_stream = threading.Thread(target=price_stream, name='订单簿')
     t_price_stream.start()
+
+    time.sleep(2)
+
+    t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
+    t_trade_stream.start()
+    
+    time.sleep(2)
+
+    t_account_stream = threading.Thread(target=account_stream, name='账户监听')
+    t_account_stream.start()
