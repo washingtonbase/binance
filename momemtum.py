@@ -51,8 +51,8 @@ def get_order_constants():
     if not got_price:
         got_price = get_price()
     
-    mid = 0.0005
-    top = 0.003
+    mid = 0.0002
+    top = 0.001
     
     return {
         'open-long-mid': [f'{timestamp}-open-long-mid', 'LONG', round(got_price * (1 + mid), 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
@@ -118,10 +118,12 @@ def account_stream():
                     case 'close-long-high':
                         # 其实我希望到这里直接终止掉整个程序
                         print('exit')
-                        os.exit()
+                        print(calculate_gain())
+                        os._exit(0)
                     case 'close-short-low':
+                        print(calculate_gain())
                         print('ext')
-                        os.exit()
+                        os._exit(0)
 
     
 
@@ -284,6 +286,22 @@ def action():
             ]:
             create_order(*order_constants[key_])
     
+start_time = int(time.time_ns() / 10**6)
+
+def calculate_gain():
+    params = {
+        'symbol': '1000PEPEUSDC',
+        'startTime': start_time,
+        'timestamp': int(time.time_ns() / 10**6)
+    }
+    
+    params['signature'] = hashing(urlencode(params))
+    return  requests.get('https://fapi.binance.com/fapi/v1/userTrades', params=params, headers = {
+        'X-MBX-APIKEY': api_key
+    }).json()
+    
+    
+     
 
 
 if __name__ == "__main__":
