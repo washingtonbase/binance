@@ -75,6 +75,17 @@ open_orders = {
     'close-short-low': False
 }
 
+def calculate_total_profit(filled_orders):
+    total_realized_pnl = 0
+    total_commission = 0
+    
+    for order in filled_orders:
+        total_realized_pnl += float(order['realizedPnl'])
+        total_commission += float(order['commission'])
+    
+        total_profit = total_realized_pnl - total_commission
+    return total_profit
+
 
 # 订阅账户数据流的函数
 def account_stream():
@@ -92,7 +103,7 @@ def account_stream():
 
 
     def on_message(ws, message):
-        logger.info(f"[blue]{message}[/]", extra={"markup": True})
+        # logger.info(f"[blue]{message}[/]", extra={"markup": True})
         msg = json.loads(message)
         
         if msg['e'] == 'ORDER_TRADE_UPDATE':
@@ -115,14 +126,8 @@ def account_stream():
                     case 'close-short-high':
                         create_order_unique('open-short-mid')
 
-                    case 'close-long-high':
-                        # 其实我希望到这里直接终止掉整个程序
-                        print('exit')
-                        print(calculate_gain())
-                        os._exit(0)
-                    case 'close-short-low':
-                        print(calculate_gain())
-                        print('ext')
+                    case 'close-long-high' | 'close-short-low':
+                        terminate()
                         os._exit(0)
 
     
@@ -144,7 +149,8 @@ def trade_stream():
     global trade_ws
 
     def on_message(ws, message):
-        logger.info(f"[red]{message}[/]", extra={"markup": True})
+        # logger.info(f"[red]{message}[/]", extra={"markup": True})
+        pass
 
 
     def on_error(ws, error):
@@ -301,7 +307,20 @@ def calculate_gain():
     }).json()
     
     
-     
+def terminate():
+    params = {
+        'symbol': '1000PEPEUSDC',
+        'timestamp': int(time.time_ns() / 10**6)
+    }
+    
+    params['signature'] = hashing(urlencode(params))
+    requests.delete('https://fapi.binance.com/fapi/v1/allOpenOrders', params=params, headers = {
+        'X-MBX-APIKEY': api_key
+    })
+    
+    with open('gain.txt', 'a+') as f:
+        f.write(f'{datetime.now().strftime("%H:%M:%S")} 收益: {calculate_total_profit(calculate_gain())} \n')
+        print(f'收益: {calculate_total_profit(calculate_gain())} \n')
 
 
 if __name__ == "__main__":
