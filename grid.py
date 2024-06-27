@@ -51,16 +51,17 @@ def get_order_constants():
     if not got_price:
         got_price = get_price()
     
-    gain = 0.0002
-    stop_loss = 0.0015
+    # 看公告， USDC 挂单零手续费的活动7月就要结束了。回归到标准 0.02% / 0.05% - Maker / Taker, 十分遗憾，所以 gain要设置的大一点
+    gain = 0.0004
+    stop_loss = 0.0030
     
     return {
         'open-long-mid': [f'{timestamp}-open-long-mid', 'LONG', 0, round(got_price * (1 - gain), 7), 'BUY', 'LIMIT', int(5.5/got_price)],
-        'close-long-high': [f'{timestamp}-close-long-high', 'LONG', 0, round(got_price * (1 + gain), 7), 'SELL', 'LIMIT', int(5.5/got_price)],
+        'close-long-high': [f'{timestamp}-close-long-high', 'LONG', 0, round(got_price * (1 ), 7), 'SELL', 'LIMIT', int(5.5/got_price)],
         'close-long-low': [f'{timestamp}-close-long-low', 'LONG', round(got_price * (1 - stop_loss), 7), 0, 'SELL', 'STOP_MARKET', int(5.5/got_price)],
         
         'open-short-mid': [f'{timestamp}-open-short-mid', 'SHORT', 0, round(got_price * (1 + gain), 7),  'SELL', 'LIMIT', int(5.5/got_price)],
-        'close-short-low': [f'{timestamp}-close-short-low', 'SHORT', 0, round(got_price * (1 - gain), 7), 'BUY', 'LIMIT', int(5.5/got_price)],
+        'close-short-low': [f'{timestamp}-close-short-low', 'SHORT', 0, round(got_price * (1 ), 7), 'BUY', 'LIMIT', int(5.5/got_price)],
         'close-short-high': [f'{timestamp}-close-short-high', 'SHORT',round(got_price * (1 + stop_loss), 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)]
     }
 
@@ -119,11 +120,14 @@ def account_stream():
             if msg['o']['X'] == 'FILLED' or msg['o']['X'] == 'EXPIRED':
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = False
 
-            if msg['o']['X'] == 'FILLED' and filled_times > 4:
+            if msg['o']['X'] == 'FILLED':
                 match f'{open_or_close}-{long_or_short}-{high_or_low}':
                     case 'open-long-mid':
+                        create_order_unique('close-long-high')
                         create_order_unique('close-long-low')
+                        
                     case 'open-short-mid':
+                        create_order_unique('close-short-low')
                         create_order_unique('close-short-high')
                     case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
                         terminate()
@@ -273,8 +277,10 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, q
     
 def create_order_unique(instruction):
     order_consts = get_order_constants()
+    print(open_orders)
     if not open_orders[instruction]:
         create_order(*order_consts[instruction])
+        print('created', order_consts[instruction])
 
 
 def action():
@@ -286,8 +292,8 @@ def action():
         if key_ in [
                 'open-long-mid',
                 'open-short-mid',
-                'close-long-high',
-                'close-short-low'
+                # 'close-long-high',
+                # 'close-short-low'
             ]:
             create_order(*order_constants[key_])
     
