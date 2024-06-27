@@ -51,8 +51,8 @@ def get_order_constants():
     if not got_price:
         got_price = get_price()
     
-    mid = 0.0002
-    top = 0.001
+    mid = 0.0005
+    top = 0.003
     
     return {
         'open-long-mid': [f'{timestamp}-open-long-mid', 'LONG', round(got_price * (1 + mid), 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)],
@@ -86,6 +86,7 @@ def calculate_total_profit(filled_orders):
         total_profit = total_realized_pnl - total_commission
     return total_profit
 
+filled_times = 0
 
 # 订阅账户数据流的函数
 def account_stream():
@@ -111,11 +112,14 @@ def account_stream():
             order_timestamp, open_or_close, long_or_short, high_or_low = id.split('-')
             
             if msg['o']['X'] == 'NEW':
+                global filled_times
+                # 这里主要是因为 trade_stream 一开始就会发送 4 次下单，这些下单不应该被响应
+                filled_times += 1
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = True
             if msg['o']['X'] == 'FILLED' or msg['o']['X'] == 'EXPIRED':
                 open_orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = False
 
-            if msg['o']['X'] == 'FILLED':
+            if msg['o']['X'] == 'FILLED' and filled_times > 4:
                 match f'{open_or_close}-{long_or_short}-{high_or_low}':
                     case 'open-long-mid':
                         create_order_unique('close-long-low')
@@ -327,15 +331,13 @@ if __name__ == "__main__":
     from datetime import datetime
     print(datetime.now().strftime("%H:%M:%S"))
 
+    t_account_stream = threading.Thread(target=account_stream, name='账户监听')
+    t_account_stream.start()
+    
     t_price_stream = threading.Thread(target=price_stream, name='订单簿')
     t_price_stream.start()
 
-    time.sleep(2)
-
+    time.sleep(1)
     t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
     t_trade_stream.start()
     
-    time.sleep(2)
-
-    t_account_stream = threading.Thread(target=account_stream, name='账户监听')
-    t_account_stream.start()
