@@ -104,6 +104,11 @@ class OrderWorkder():
                     cancel_order(f'{self.timestamp}-open-long-mid')
                     
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
+                    if f'{open_or_close}-{long_or_short}-{high_or_low}' in ['close-long-low' , 'close-short-high']:
+                        print(f'{self.timestamp} 亏本交易 {long_or_short}')
+                        with open('gain.txt', 'a+') as f:
+                            f.write(f'{self.timestamp} 亏本交易 {long_or_short}')
+                            
                     self.calculate_total_profit()
                     self.cancel_rest_orders()
     
