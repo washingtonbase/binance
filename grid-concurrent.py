@@ -61,18 +61,19 @@ def reset():
     
     get_order_constants()
     
-class OrderManager():
+class OrderWorkder():
     baseline_price = -1
     timestamp = -1
-    open_orders = None
-    order_consts = None
+    orders = {}
+    order_consts = {}
     gain = 0.0008
     stop_loss = 0.03
+    order_ids = {}
     
     def __init__(self):
         self.baseline_price = get_price()
         self.timestamp = int(time.time_ns() / 10**6)
-        self.open_orders = {
+        self.orders = {
                 'open-long-mid': False,
                 'close-long-high': False,
                 'close-long-low': False,
@@ -82,6 +83,7 @@ class OrderManager():
                 'close-short-low': False,
                 'ended': False
             }
+        
         self.order_consts = {
             'open-long-mid': [f'{self.timestamp}-open-long-mid', 'LONG', 0, round(got_price * (1 - self.gain), 7), 'BUY', 'LIMIT', int(5.5/got_price)],
             'close-long-high': [f'{self.timestamp}-close-long-high', 'LONG', 0, round(got_price * (1 ), 7), 'SELL', 'LIMIT', int(5.5/got_price)],
@@ -92,13 +94,107 @@ class OrderManager():
             'close-short-high': [f'{self.timestamp}-close-short-high', 'SHORT',round(got_price * (1 + self.stop_loss), 7), 0, 'BUY', 'STOP_MARKET', int(5.5/got_price)]
         }
         
-    def statr(self):
+    def start(self):
         for key_ in [ 'open-long-mid', 'open-short-mid']:
             create_order(*(self.order_consts[key_]))
     
+    def update(self, msg):
+        client_order_id = msg['o']['c']
+        order_timestamp, open_or_close, long_or_short, high_or_low = client_order_id.split('-')
+        if not int(order_timestamp) == self.timestamp:
+            return
+
+        self.orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = msg['o']['X']
+
+        if msg['o']['X'] == 'NEW':
+            self.order_ids[client_order_id] = msg['o']['i']
+        
+        if msg['o']['X'] == 'FILLED':
+            match f'{open_or_close}-{long_or_short}-{high_or_low}':
+                case 'open-long-mid':
+                    create_order(self.order_consts['close-long-high'])
+                    create_order(self.order_consts['close-long-low'])
+                    
+                case 'open-short-mid':
+                    create_order(self.order_consts['close-short-low'])
+                    create_order(self.order_consts['close-short-high'])
+                    
+                case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
+                    self.calculate_total_profit()
+                    
+        
+    def calculate_total_profit(self):
+        params = {
+            'symbol': '1000PEPEUSDC',
+            'startTime': self.timestamp,
+            'timestamp': int(time.time_ns() / 10**6)
+        }
+        
+        params['signature'] = hashing(urlencode(params))
+        all_orders = requests.get('https://fapi.binance.com/fapi/v1/userTrades', params=params, headers = {
+            'X-MBX-APIKEY': api_key
+        }).json()
+        
+        total_realized_pnl = 0
+        total_commission = 0
+        
+        for order in all_orders:
+            if order['orderId'] in self.order_ids.keys():
+                total_realized_pnl += float(order['realizedPnl'])
+                total_commission += float(order['commission'])
+                
+                total_profit = total_realized_pnl - total_commission
+        
+        with open('gain.txt', 'a+') as f:
+            f.write(f'{self.timestamp} 收益: {total_profit} \n')
+            print(f'{self.timestamp} 收益: {total_profit} \n')
+
+        return total_profit
+
+        
+        
+        
     
     
-    
+class AccountWS:
+    def __init__(self):
+        self.observers = []
+
+        listen_key = ''
+        BASE_URL = 'https://fapi.binance.com'
+
+        url = f'{BASE_URL}/fapi/v1/listenKey'
+        headers = {
+            'X-MBX-APIKEY': api_key
+        }
+        response = requests.post(url, headers=headers)
+        if response.status_code == 200:
+            listen_key = response.json()['listenKey']
+
+        global accout_ws
+        
+        accout_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/{listen_key}",
+                                    on_message=self.on_message,
+                                    on_error=print,
+                                    )
+        accout_ws.run_forever()
+
+    def subscribe(self, observer):
+        self.observers.append(observer)
+
+    def unsubscribe(self, observer):
+        self.observers.remove(observer)
+
+    def notify(self, message):
+        for observer in self.observers:
+            observer.update(message)
+
+    def on_message(self, ws, message):
+        msg = json.loads(message)
+        if msg['e'] == 'ORDER_TRADE_UPDATE':        
+            self.notify(msg)
+
+
         
 
 
