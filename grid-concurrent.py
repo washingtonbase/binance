@@ -38,11 +38,10 @@ def hashing(query_string):
         api_secret.encode("utf-8"), query_string.encode("utf-8"), hashlib.sha256
     ).hexdigest()
 
-accout_ws = None
+account_ws = None
 trade_ws = None
 price_ws = None
 
-    
 class OrderWorkder():
     baseline_price = -1
     timestamp = -1
@@ -79,6 +78,7 @@ class OrderWorkder():
     def start(self):
         for key_ in [ 'open-long-mid', 'open-short-mid']:
             create_order(*(self.order_consts[key_]))
+        print(f'{self.timestamp} 工人启动')
     
     def update(self, msg):
         client_order_id = msg['o']['c']
@@ -104,8 +104,7 @@ class OrderWorkder():
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
                     self.calculate_total_profit()
                     self.cancel_rest_orders()
-                    
-        
+    
     def calculate_total_profit(self):
         params = {
             'symbol': '1000PEPEUSDC',
@@ -148,13 +147,6 @@ class OrderWorkder():
             if order['clientOrderId'].startswith(str(self.timestamp)):
                 cancel_order(order['clientOrderId'])
 
-def work():
-    for i in range(10):
-        worker = OrderWorkder()
-        
-        
-
-
 
 class AccountWS:
     def __init__(self):
@@ -171,9 +163,9 @@ class AccountWS:
         if response.status_code == 200:
             listen_key = response.json()['listenKey']
 
-        global accout_ws
+        global account_ws
         
-        accout_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/{listen_key}",
+        account_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/{listen_key}",
                                     on_message=self.on_message,
                                     on_error=print,
                                     )
@@ -192,8 +184,16 @@ class AccountWS:
         msg = json.loads(message)
         if msg['e'] == 'ORDER_TRADE_UPDATE':        
             self.notify(msg)
+
     def run(self):
-        accout_ws.run_forever()
+        account_ws.run_forever()
+
+def work(account_stream_instance: AccountWS):
+    for i in range(5):
+        worker = OrderWorkder()
+        account_stream_instance.subscribe(worker)
+        worker.start()
+        time.sleep(60)
 
 def trade_stream():
     global trade_ws
@@ -209,17 +209,13 @@ def trade_stream():
     def on_close(ws):
         logger.info('closed')
 
-    def on_open(ws):
-        action()
 
     trade_ws = websocket.WebSocketApp("wss://ws-fapi.binance.com/ws-fapi/v1",
                             on_message=on_message,
                             on_error=on_error,
                             on_close=on_close)
-    trade_ws.on_open = on_open
 
     trade_ws.run_forever()
-
 
 def price_stream():
     global price_ws
@@ -241,7 +237,6 @@ def price_stream():
 condition = threading.Condition()
 
 price = None
-
 
 def get_price():
 
@@ -275,8 +270,6 @@ def get_price():
         condition.wait()
         price_obj = json.loads(price)
         return float(price_obj['result']['price'])
-
-
 
 def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, quantity):
     logger.warn(f'newClientOrderId: {newClientOrderId}, positionSide: {positionSide}, stopPrice: {stopPrice}, price: {price}, side: {side}, type: {type}')
@@ -316,7 +309,6 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, q
     }
     trade_ws.send(json.dumps(payload))
 
-
 def cancel_order(clientOrderId):
     params = {
         "apiKey": api_key,
@@ -337,8 +329,6 @@ def cancel_order(clientOrderId):
     }
     trade_ws.send(json.dumps(payload))
     
-
-    
 def terminate():
     params = {
         'symbol': '1000PEPEUSDC',
@@ -350,8 +340,6 @@ def terminate():
         'X-MBX-APIKEY': api_key
     })
     
-
-
 if __name__ == "__main__":
     from datetime import datetime
     print(datetime.now().strftime("%H:%M:%S"))
@@ -367,4 +355,6 @@ if __name__ == "__main__":
     t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
     t_trade_stream.start()
     
-    
+    time.sleep(3)
+    t_worker_thread = threading.Thread(target=work, args=[account_stream_instance], name = '工作者')
+    t_worker_thread.start()
