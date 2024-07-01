@@ -96,10 +96,12 @@ class OrderWorkder():
                 case 'open-long-mid':
                     create_order(*(self.order_consts['close-long-high']))
                     create_order(*(self.order_consts['close-long-low']))
+                    cancel_order(f'{self.timestamp}-open-short-mid')
                     
                 case 'open-short-mid':
                     create_order(*(self.order_consts['close-short-low']))
                     create_order(*(self.order_consts['close-short-high']))
+                    cancel_order(f'{self.timestamp}-open-long-mid')
                     
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
                     self.calculate_total_profit()
@@ -120,10 +122,8 @@ class OrderWorkder():
         total_realized_pnl = 0
         total_commission = 0
         total_profit = 0
-        print('going to calc', self.order_ids.values(), all_orders)
         for order in all_orders:
             if order['orderId'] in self.order_ids.values():
-                print('calcled')
                 total_realized_pnl += float(order['realizedPnl'])
                 total_commission += float(order['commission'])
                 
@@ -191,7 +191,7 @@ class AccountWS:
         account_ws.run_forever()
 
 def work(account_stream_instance: AccountWS):
-    for i in range(5):
+    for i in range(20):
         worker = OrderWorkder()
         account_stream_instance.subscribe(worker)
         worker.start()
