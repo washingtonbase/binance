@@ -47,8 +47,8 @@ class OrderWorkder():
     timestamp = -1
     orders = {}
     order_consts = {}
-    gain = 0.0008
-    stop_loss = 0.03
+    gain = 0.0003
+    stop_loss = 0.1
     order_ids = {}
     
     def __init__(self):
@@ -94,12 +94,12 @@ class OrderWorkder():
         if msg['o']['X'] == 'FILLED':
             match f'{open_or_close}-{long_or_short}-{high_or_low}':
                 case 'open-long-mid':
-                    create_order(self.order_consts['close-long-high'])
-                    create_order(self.order_consts['close-long-low'])
+                    create_order(*(self.order_consts['close-long-high']))
+                    create_order(*(self.order_consts['close-long-low']))
                     
                 case 'open-short-mid':
-                    create_order(self.order_consts['close-short-low'])
-                    create_order(self.order_consts['close-short-high'])
+                    create_order(*(self.order_consts['close-short-low']))
+                    create_order(*(self.order_consts['close-short-high']))
                     
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
                     self.calculate_total_profit()
@@ -119,9 +119,11 @@ class OrderWorkder():
         
         total_realized_pnl = 0
         total_commission = 0
-        
+        total_profit = 0
+        print('going to calc', self.order_ids.values(), all_orders)
         for order in all_orders:
-            if order['orderId'] in self.order_ids.keys():
+            if order['orderId'] in self.order_ids.values():
+                print('calcled')
                 total_realized_pnl += float(order['realizedPnl'])
                 total_commission += float(order['commission'])
                 
