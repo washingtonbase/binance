@@ -44,14 +44,10 @@ trade_ws = None
 price_ws = None
 
 available_margin = 300
-value_per_position = 15
-current_total_gain = 0
-last_open_time = time.time()
-        
 
 class Army():
     teams: List[Type['Team']] = []
-    
+    current_total_gain = 0
     def __init__(self):
         self.create_team()
         logging.info('创建了 Team ')
@@ -60,6 +56,7 @@ class Army():
         self.teams.append(Team(self))
     
     def start(self):
+        global available_margin
         while True:
             if available_margin > 30:
                 for team in self.teams:
@@ -76,6 +73,7 @@ class Team():
         self.create_worker()
     
     def create_worker(self):
+        global available_margin
         if not self.retired and available_margin > 30:
             worker = OrderWorker(self)
             self.workers.append(worker)
@@ -83,7 +81,7 @@ class Team():
     
     def check_timeout(self):
         if self.workers[-1]:
-            if int(time.time() * 1000) - self.workers[-1].timestamp > 5 * 60 * 1000:
+            if int(time.time() * 1000) - self.workers[-1].timestamp > 3 * 60 * 1000:
                 self.retired = True
                 logging.info(f'{self.workers[-1].timestamp} 已过期 {self.workers[-1].baseline_price}')
                 self.army.create_team()
@@ -115,6 +113,7 @@ class OrderWorker():
                 'ended': False
             }
         
+        value_per_position = 15
         self.order_consts = {
             'open-long-mid': [f'{self.timestamp}-open-long-mid', 'LONG', 0, round(self.baseline_price * (1 - self.gain), 7), 'BUY', 'LIMIT', int(value_per_position/self.baseline_price)],
             'close-long-high': [f'{self.timestamp}-close-long-high', 'LONG', 0, round(self.baseline_price * (1 ), 7), 'SELL', 'LIMIT', int(value_per_position/self.baseline_price)],
@@ -136,7 +135,7 @@ class OrderWorker():
         logging.info(f'{self.timestamp} 工人启动')
     
     def update(self, msg):
-        global available_margin, last_open_time
+        global available_margin
         client_order_id = msg['o']['c']
         order_timestamp, open_or_close, long_or_short, high_or_low = client_order_id.split('-')
         if not int(order_timestamp) == self.timestamp:
@@ -154,14 +153,13 @@ class OrderWorker():
                     create_order(*(self.order_consts['close-long-low']))
                     cancel_order(f'{self.timestamp}-open-short-mid')
                     available_margin -= 15
-                    last_open_time = time.time()
+                    
                     
                 case 'open-short-mid':
                     create_order(*(self.order_consts['close-short-low']))
                     create_order(*(self.order_consts['close-short-high']))
                     cancel_order(f'{self.timestamp}-open-long-mid')
                     available_margin -= 15
-                    last_open_time = time.time()
                     
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
                     if f'{open_or_close}-{long_or_short}-{high_or_low}' in ['close-long-low' , 'close-short-high']:
@@ -182,6 +180,7 @@ class OrderWorker():
                 logging.error(f'异常取消 {order_timestamp}')
     
     def finish(self):
+        global available_margin
         self.calculate_total_profit()
         self.cancel_rest_orders()
         self.done = True
@@ -216,8 +215,8 @@ class OrderWorker():
             f.write(f'{self.timestamp} 收益: {total_profit} \n')
             logging.info(f'{self.timestamp} 收益: {total_profit} \n')
         
-        current_total_gain += total_profit
-        logging.info(f'{self.timestamp} 当前总收益 {current_total_gain}')
+        self.team.army.current_total_gain += total_profit
+        logging.info(f'{self.timestamp} 当前总收益 {self.team.army.current_total_gain}')
 
         return total_profit
 
@@ -239,6 +238,7 @@ class OrderWorker():
 
 class AccountWS:
     def __init__(self):
+        global account_ws
         self.observers = []
 
         listen_key = ''
@@ -252,7 +252,6 @@ class AccountWS:
         if response.status_code == 200:
             listen_key = response.json()['listenKey']
 
-        global account_ws
         
         account_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/{listen_key}",
                                     on_message=self.on_message,
@@ -275,6 +274,7 @@ class AccountWS:
             self.notify(msg)
 
     def run(self):
+        global account_ws
         account_ws.run_forever()
 
 
@@ -314,7 +314,6 @@ def price_stream():
                                 on_error=on_error,
                                 on_close=on_close)
     # ws.on_open = on_open
-    
     price_ws.run_forever()
 
 condition = threading.Condition()
@@ -355,6 +354,7 @@ def get_price():
         return float(price_obj['result']['price'])
 
 def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, quantity):
+    global trade_ws
     logger.warn(f'newClientOrderId: {newClientOrderId}, positionSide: {positionSide}, stopPrice: {stopPrice}, price: {price}, side: {side}, type: {type}')
     timestamp = int(time.time_ns() / 1000000)
     params = {
@@ -393,6 +393,7 @@ def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, q
     trade_ws.send(json.dumps(payload))
 
 def cancel_order(clientOrderId):
+    global trade_ws
     params = {
         "apiKey": api_key,
         "origClientOrderId": clientOrderId,
@@ -428,9 +429,6 @@ if __name__ == "__main__":
     logging.info(datetime.now().strftime("%H:%M:%S"))
 
     account_stream_instance = AccountWS()
-    
-    army = Army()
-    
     t_account_stream = threading.Thread(target=account_stream_instance.run, name='账户监听')
     t_account_stream.start()
     
@@ -441,5 +439,7 @@ if __name__ == "__main__":
     t_trade_stream.start()
     
     time.sleep(3)
+    
+    army = Army()
     t_worker_thread = threading.Thread(target=army.start, name = '军队')
     t_worker_thread.start()
