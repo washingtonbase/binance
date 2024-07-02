@@ -5,8 +5,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 import logging
 import websocket
-
-
+from typing import Type
 import requests
 import websocket
 import json
@@ -48,35 +47,47 @@ available_margin = 300
 value_per_position = 15
 current_total_gain = 0
 last_open_time = time.time()
-
-class Team():
-    team_order = None
-    workers = []
-    
-    def __init__(self, team_order):
-        self.team_order = team_order
         
-    def create_worker(self):
-        self.workers.append(OrderWorker(self))
-        
-    
 
 class Army():
-    teams: List[Team] = Team
+    teams: List[Type['Team']] = []
     
     def __init__(self):
-        pass
+        self.create_team()
+        logging.info('创建了 Team ')
+    
+    def create_team(self):
+        self.teams.append(Team(self))
     
     def start(self):
         while True:
-            for team in self.teams:
-                team.check_timeout()
-                
+            if available_margin > 30:
+                for team in self.teams:
+                    team.check_timeout()
+            time.sleep(10)
 
 
+class Team():
+    army: Army
+    workers: List[Type['OrderWorker']] = []
+    retired = False
+    def __init__(self, army):
+        self.army = army
+        self.create_worker()
+    
+    def create_worker(self):
+        if not self.retired and available_margin > 30:
+            worker = OrderWorker(self)
+            self.workers.append(worker)
+            logging.info(f'创建了 worker {worker.timestamp}')
+    
+    def check_timeout(self):
+        if self.workers[-1]:
+            if int(time.time() * 1000) - self.workers[-1].timestamp > 5 * 60 * 1000:
+                self.retired = True
+                logging.info(f'{self.workers[-1].timestamp} 已过期 {self.workers[-1].baseline_price}')
+                self.army.create_team()
 
-
-        
 
 class OrderWorker():
     baseline_price = -1
@@ -344,12 +355,6 @@ def get_price():
         return float(price_obj['result']['price'])
 
 def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, quantity):
-    if available_margin < 30:
-        logging.error('保证金不足')
-        with open('gain.txt', 'a+') as f:
-            f.write(f'{newClientOrderId} 保证金不足 \n')
-        return
-    
     logger.warn(f'newClientOrderId: {newClientOrderId}, positionSide: {positionSide}, stopPrice: {stopPrice}, price: {price}, side: {side}, type: {type}')
     timestamp = int(time.time_ns() / 1000000)
     params = {
@@ -424,6 +429,8 @@ if __name__ == "__main__":
 
     account_stream_instance = AccountWS()
     
+    army = Army()
+    
     t_account_stream = threading.Thread(target=account_stream_instance.run, name='账户监听')
     t_account_stream.start()
     
@@ -434,5 +441,5 @@ if __name__ == "__main__":
     t_trade_stream.start()
     
     time.sleep(3)
-    t_worker_thread = threading.Thread(target=work, args=[account_stream_instance], name = '工作者')
+    t_worker_thread = threading.Thread(target=army.start, name = '军队')
     t_worker_thread.start()
