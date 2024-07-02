@@ -24,11 +24,12 @@ load_dotenv(dotenv_path)
 api_key = os.getenv('api_key')
 api_secret = os.getenv('api_secret')
 
+file_handler = logging.FileHandler('log.log', mode='a')
 # 配置 logging
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(threadName)s - %(levelname)s - %(message)s",
-    handlers=[RichHandler()]
+    handlers=[RichHandler(), file_handler]
 )
 logger = logging.getLogger('rich')
 
@@ -44,13 +45,15 @@ price_ws = None
 
 available_margin = 300
 value_per_position = 15
+current_total_gain = 0
+last_open_time = time.time()
 
 class OrderWorkder():
     baseline_price = -1
     timestamp = -1
     orders = {}
     order_consts = {}
-    gain = 0.004
+    gain = 0.0004
     stop_loss = 0.1
     order_ids = {}
     
@@ -81,10 +84,10 @@ class OrderWorkder():
     def start(self):
         for key_ in [ 'open-long-mid', 'open-short-mid']:
             create_order(*(self.order_consts[key_]))
-        print(f'{self.timestamp} 工人启动')
+        logging.info(f'{self.timestamp} 工人启动')
     
     def update(self, msg):
-        global available_margin
+        global available_margin, last_open_time
         client_order_id = msg['o']['c']
         order_timestamp, open_or_close, long_or_short, high_or_low = client_order_id.split('-')
         if not int(order_timestamp) == self.timestamp:
@@ -102,27 +105,35 @@ class OrderWorkder():
                     create_order(*(self.order_consts['close-long-low']))
                     cancel_order(f'{self.timestamp}-open-short-mid')
                     available_margin -= 15
+                    last_open_time = time.time()
                     
                 case 'open-short-mid':
                     create_order(*(self.order_consts['close-short-low']))
                     create_order(*(self.order_consts['close-short-high']))
                     cancel_order(f'{self.timestamp}-open-long-mid')
                     available_margin -= 15
+                    last_open_time = time.time()
                     
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
                     if f'{open_or_close}-{long_or_short}-{high_or_low}' in ['close-long-low' , 'close-short-high']:
-                        print(f'{self.timestamp} 亏本交易 {long_or_short}')
+                        logging.info(f'{self.timestamp} 亏本交易 {long_or_short}')
                         with open('gain.txt', 'a+') as f:
                             f.write(f'{self.timestamp} 亏本交易 {long_or_short} \n')
                     else:
-                        print(f'{self.timestamp} 盈利交易 {long_or_short}')
+                        logging.info(f'{self.timestamp} 盈利交易 {long_or_short}')
                         with open('gain.txt', 'a+') as f:
                             f.write(f'{self.timestamp} 盈利交易 {long_or_short} \n')
                             
                     self.calculate_total_profit()
                     self.cancel_rest_orders()
                     available_margin += 15
-    
+
+        if msg['o']['X'] == 'CANCELED':
+            if long_or_short == 'open':
+                available_margin += 15
+            else:
+                logging.error(f'异常取消 {order_timestamp}')
+            
     def calculate_total_profit(self):
         params = {
             'symbol': '1000PEPEUSDC',
@@ -147,7 +158,10 @@ class OrderWorkder():
         
         with open('gain.txt', 'a+') as f:
             f.write(f'{self.timestamp} 收益: {total_profit} \n')
-            print(f'{self.timestamp} 收益: {total_profit} \n')
+            logging.info(f'{self.timestamp} 收益: {total_profit} \n')
+        
+        current_total_gain += total_profit
+        logging.info(f'{self.timestamp} 当前总收益 {current_total_gain}')
 
         return total_profit
 
@@ -185,7 +199,7 @@ class AccountWS:
         
         account_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/{listen_key}",
                                     on_message=self.on_message,
-                                    on_error=print,
+                                    on_error=logging.error,
                                     )
 
     def subscribe(self, observer):
@@ -207,7 +221,7 @@ class AccountWS:
         account_ws.run_forever()
 
 def work(account_stream_instance: AccountWS):
-    while True:
+    for i in range(5):
         worker = OrderWorkder()
         account_stream_instance.subscribe(worker)
         worker.start()
@@ -237,7 +251,6 @@ def trade_stream():
 
 def price_stream():
     global price_ws
-
     def on_error(ws, error):
         logger.error(error)
 
@@ -291,7 +304,7 @@ def get_price():
 
 def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, quantity):
     if available_margin < 30:
-        print('保证金不足')
+        logging.error('保证金不足')
         with open('gain.txt', 'a+') as f:
             f.write(f'{newClientOrderId} 保证金不足 \n')
         return
@@ -366,7 +379,7 @@ def terminate():
     
 if __name__ == "__main__":
     from datetime import datetime
-    print(datetime.now().strftime("%H:%M:%S"))
+    logging.info(datetime.now().strftime("%H:%M:%S"))
 
     account_stream_instance = AccountWS()
     
