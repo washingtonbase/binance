@@ -31,7 +31,6 @@ logging.basicConfig(
     format="%(asctime)s - %(threadName)s - %(levelname)s - %(message)s",
     handlers=[RichHandler(), file_handler]
 )
-logger = logging.getLogger('rich')
 
 
 def hashing(query_string):
@@ -82,6 +81,7 @@ class Team():
     def check_timeout(self):
         if self.workers[-1]:
             if int(time.time() * 1000) - self.workers[-1].timestamp > 3 * 60 * 1000:
+                self.workers[-1].time_out = True
                 self.retired = True
                 logging.info(f'{self.workers[-1].timestamp} 已过期 {self.workers[-1].baseline_price}')
                 self.army.create_team()
@@ -97,7 +97,7 @@ class OrderWorker():
     order_ids = {}
     team = None
     done = False
-    
+    time_out = False
     def __init__(self, team: Team):
         self.team = team
         self.baseline_price = get_price()
@@ -162,6 +162,9 @@ class OrderWorker():
                     available_margin -= 15
                     
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
+                    if self.time_out:
+                        logging.info(f'终于卖出了, 持续时间 {int(time.time_ns() / 10**6) - self.timestamp}')
+                    
                     if f'{open_or_close}-{long_or_short}-{high_or_low}' in ['close-long-low' , 'close-short-high']:
                         logging.info(f'{self.timestamp} 亏本交易 {long_or_short}')
                         with open('gain.txt', 'a+') as f:
@@ -173,11 +176,9 @@ class OrderWorker():
                     
                     self.finish()
 
-        if msg['o']['X'] == 'CANCELED':
-            if long_or_short == 'open':
-                available_margin += 15
-            else:
-                logging.error(f'异常取消 {order_timestamp}')
+        if msg['o']['X'] in ['CANCELED', 'EXPIRED']:
+            if f'{open_or_close}-{long_or_short}-{high_or_low}' in ['close-short-low', 'close-long-high']:
+                logging.error(f'order {self.timestamp} 异常取消，导致无法平仓')
     
     def finish(self):
         global available_margin
@@ -197,6 +198,7 @@ class OrderWorker():
         }
         
         params['signature'] = hashing(urlencode(params))
+        
         all_orders = requests.get('https://fapi.binance.com/fapi/v1/userTrades', params=params, headers = {
             'X-MBX-APIKEY': api_key
         }).json()
@@ -269,6 +271,7 @@ class AccountWS:
             observer.update(message)
 
     def on_message(self, ws, message):
+        logging.info(message)
         msg = json.loads(message)
         if msg['e'] == 'ORDER_TRADE_UPDATE':        
             self.notify(msg)
@@ -283,15 +286,18 @@ def trade_stream():
     global trade_ws
 
     def on_message(ws, message):
-        logger.info(f"[red]{message}[/]", extra={"markup": True})
-        pass
+        logging.info(message)
+        msg = json.loads(message)
+        if not msg['status'] == '200':
+            logging.error(f'这个下单发生了错误 {msg}')
+        
 
 
     def on_error(ws, error):
-        logger.error(error)
+        logging.error(error)
 
     def on_close(ws):
-        logger.info('closed')
+        logging.info('closed')
 
 
     trade_ws = websocket.WebSocketApp("wss://ws-fapi.binance.com/ws-fapi/v1",
@@ -304,10 +310,10 @@ def trade_stream():
 def price_stream():
     global price_ws
     def on_error(ws, error):
-        logger.error(error)
+        logging.error(error)
 
     def on_close(ws):
-        logger.info('closed')
+        logging.info('closed')
 
 
     price_ws = websocket.WebSocketApp(f"wss://ws-fapi.binance.com/ws-fapi/v1",
@@ -355,7 +361,7 @@ def get_price():
 
 def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, quantity):
     global trade_ws
-    logger.warn(f'newClientOrderId: {newClientOrderId}, positionSide: {positionSide}, stopPrice: {stopPrice}, price: {price}, side: {side}, type: {type}')
+    # logging.warn(f'newClientOrderId: {newClientOrderId}, positionSide: {positionSide}, stopPrice: {stopPrice}, price: {price}, side: {side}, type: {type}')
     timestamp = int(time.time_ns() / 1000000)
     params = {
         "apiKey": api_key,
