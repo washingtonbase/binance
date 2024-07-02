@@ -207,7 +207,7 @@ class AccountWS:
         account_ws.run_forever()
 
 def work(account_stream_instance: AccountWS):
-    for i in range(20):
+    while True:
         worker = OrderWorkder()
         account_stream_instance.subscribe(worker)
         worker.start()
