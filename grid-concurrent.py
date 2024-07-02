@@ -1,5 +1,6 @@
 import threading
 import time
+from typing import List
 from rich.console import Console
 from rich.logging import RichHandler
 import logging
@@ -48,7 +49,36 @@ value_per_position = 15
 current_total_gain = 0
 last_open_time = time.time()
 
-class OrderWorkder():
+class Team():
+    team_order = None
+    workers = []
+    
+    def __init__(self, team_order):
+        self.team_order = team_order
+        
+    def create_worker(self):
+        self.workers.append(OrderWorker(self))
+        
+    
+
+class Army():
+    teams: List[Team] = Team
+    
+    def __init__(self):
+        pass
+    
+    def start(self):
+        while True:
+            for team in self.teams:
+                team.check_timeout()
+                
+
+
+
+
+        
+
+class OrderWorker():
     baseline_price = -1
     timestamp = -1
     orders = {}
@@ -56,8 +86,11 @@ class OrderWorkder():
     gain = 0.0004
     stop_loss = 0.1
     order_ids = {}
+    team = None
+    done = False
     
-    def __init__(self):
+    def __init__(self, team: Team):
+        self.team = team
         self.baseline_price = get_price()
         self.timestamp = int(time.time_ns() / 10**6)
         self.orders = {
@@ -80,6 +113,11 @@ class OrderWorkder():
             'close-short-low': [f'{self.timestamp}-close-short-low', 'SHORT', 0, round(self.baseline_price * (1 ), 7), 'BUY', 'LIMIT', int(value_per_position/self.baseline_price)],
             'close-short-high': [f'{self.timestamp}-close-short-high', 'SHORT',round(self.baseline_price * (1 + self.stop_loss), 7), 0, 'BUY', 'STOP_MARKET', int(value_per_position/self.baseline_price)]
         }
+        
+        account_stream_instance.subscribe(self)
+        self.start()
+        
+        
         
     def start(self):
         for key_ in [ 'open-long-mid', 'open-short-mid']:
@@ -123,17 +161,24 @@ class OrderWorkder():
                         logging.info(f'{self.timestamp} 盈利交易 {long_or_short}')
                         with open('gain.txt', 'a+') as f:
                             f.write(f'{self.timestamp} 盈利交易 {long_or_short} \n')
-                            
-                    self.calculate_total_profit()
-                    self.cancel_rest_orders()
-                    available_margin += 15
+                    
+                    self.finish()
 
         if msg['o']['X'] == 'CANCELED':
             if long_or_short == 'open':
                 available_margin += 15
             else:
                 logging.error(f'异常取消 {order_timestamp}')
-            
+    
+    def finish(self):
+        self.calculate_total_profit()
+        self.cancel_rest_orders()
+        self.done = True
+        available_margin += 15
+        account_stream_instance.unsubscribe(self)
+        self.team.create_worker()
+        
+    
     def calculate_total_profit(self):
         params = {
             'symbol': '1000PEPEUSDC',
@@ -179,6 +224,7 @@ class OrderWorkder():
             if order['clientOrderId'].startswith(str(self.timestamp)):
                 cancel_order(order['clientOrderId'])
 
+        
 
 class AccountWS:
     def __init__(self):
@@ -220,12 +266,7 @@ class AccountWS:
     def run(self):
         account_ws.run_forever()
 
-def work(account_stream_instance: AccountWS):
-    for i in range(5):
-        worker = OrderWorkder()
-        account_stream_instance.subscribe(worker)
-        worker.start()
-        time.sleep(30)
+
 
 def trade_stream():
     global trade_ws
