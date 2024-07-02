@@ -42,12 +42,15 @@ account_ws = None
 trade_ws = None
 price_ws = None
 
+available_margin = 300
+value_per_position = 15
+
 class OrderWorkder():
     baseline_price = -1
     timestamp = -1
     orders = {}
     order_consts = {}
-    gain = 0.0003
+    gain = 0.004
     stop_loss = 0.1
     order_ids = {}
     
@@ -66,13 +69,13 @@ class OrderWorkder():
             }
         
         self.order_consts = {
-            'open-long-mid': [f'{self.timestamp}-open-long-mid', 'LONG', 0, round(self.baseline_price * (1 - self.gain), 7), 'BUY', 'LIMIT', int(5.5/self.baseline_price)],
-            'close-long-high': [f'{self.timestamp}-close-long-high', 'LONG', 0, round(self.baseline_price * (1 ), 7), 'SELL', 'LIMIT', int(5.5/self.baseline_price)],
-            'close-long-low': [f'{self.timestamp}-close-long-low', 'LONG', round(self.baseline_price * (1 - self.stop_loss), 7), 0, 'SELL', 'STOP_MARKET', int(5.5/self.baseline_price)],
+            'open-long-mid': [f'{self.timestamp}-open-long-mid', 'LONG', 0, round(self.baseline_price * (1 - self.gain), 7), 'BUY', 'LIMIT', int(value_per_position/self.baseline_price)],
+            'close-long-high': [f'{self.timestamp}-close-long-high', 'LONG', 0, round(self.baseline_price * (1 ), 7), 'SELL', 'LIMIT', int(value_per_position/self.baseline_price)],
+            'close-long-low': [f'{self.timestamp}-close-long-low', 'LONG', round(self.baseline_price * (1 - self.stop_loss), 7), 0, 'SELL', 'STOP_MARKET', int(value_per_position/self.baseline_price)],
             
-            'open-short-mid': [f'{self.timestamp}-open-short-mid', 'SHORT', 0, round(self.baseline_price * (1 + self.gain), 7),  'SELL', 'LIMIT', int(5.5/self.baseline_price)],
-            'close-short-low': [f'{self.timestamp}-close-short-low', 'SHORT', 0, round(self.baseline_price * (1 ), 7), 'BUY', 'LIMIT', int(5.5/self.baseline_price)],
-            'close-short-high': [f'{self.timestamp}-close-short-high', 'SHORT',round(self.baseline_price * (1 + self.stop_loss), 7), 0, 'BUY', 'STOP_MARKET', int(5.5/self.baseline_price)]
+            'open-short-mid': [f'{self.timestamp}-open-short-mid', 'SHORT', 0, round(self.baseline_price * (1 + self.gain), 7),  'SELL', 'LIMIT', int(value_per_position/self.baseline_price)],
+            'close-short-low': [f'{self.timestamp}-close-short-low', 'SHORT', 0, round(self.baseline_price * (1 ), 7), 'BUY', 'LIMIT', int(value_per_position/self.baseline_price)],
+            'close-short-high': [f'{self.timestamp}-close-short-high', 'SHORT',round(self.baseline_price * (1 + self.stop_loss), 7), 0, 'BUY', 'STOP_MARKET', int(value_per_position/self.baseline_price)]
         }
         
     def start(self):
@@ -81,6 +84,7 @@ class OrderWorkder():
         print(f'{self.timestamp} 工人启动')
     
     def update(self, msg):
+        global available_margin
         client_order_id = msg['o']['c']
         order_timestamp, open_or_close, long_or_short, high_or_low = client_order_id.split('-')
         if not int(order_timestamp) == self.timestamp:
@@ -97,20 +101,27 @@ class OrderWorkder():
                     create_order(*(self.order_consts['close-long-high']))
                     create_order(*(self.order_consts['close-long-low']))
                     cancel_order(f'{self.timestamp}-open-short-mid')
+                    available_margin -= 15
                     
                 case 'open-short-mid':
                     create_order(*(self.order_consts['close-short-low']))
                     create_order(*(self.order_consts['close-short-high']))
                     cancel_order(f'{self.timestamp}-open-long-mid')
+                    available_margin -= 15
                     
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
                     if f'{open_or_close}-{long_or_short}-{high_or_low}' in ['close-long-low' , 'close-short-high']:
                         print(f'{self.timestamp} 亏本交易 {long_or_short}')
                         with open('gain.txt', 'a+') as f:
-                            f.write(f'{self.timestamp} 亏本交易 {long_or_short}')
+                            f.write(f'{self.timestamp} 亏本交易 {long_or_short} \n')
+                    else:
+                        print(f'{self.timestamp} 盈利交易 {long_or_short}')
+                        with open('gain.txt', 'a+') as f:
+                            f.write(f'{self.timestamp} 盈利交易 {long_or_short} \n')
                             
                     self.calculate_total_profit()
                     self.cancel_rest_orders()
+                    available_margin += 15
     
     def calculate_total_profit(self):
         params = {
@@ -200,7 +211,7 @@ def work(account_stream_instance: AccountWS):
         worker = OrderWorkder()
         account_stream_instance.subscribe(worker)
         worker.start()
-        time.sleep(60)
+        time.sleep(30)
 
 def trade_stream():
     global trade_ws
@@ -279,6 +290,12 @@ def get_price():
         return float(price_obj['result']['price'])
 
 def create_order(newClientOrderId, positionSide, stopPrice, price, side, type, quantity):
+    if available_margin < 30:
+        print('保证金不足')
+        with open('gain.txt', 'a+') as f:
+            f.write(f'{newClientOrderId} 保证金不足 \n')
+        return
+    
     logger.warn(f'newClientOrderId: {newClientOrderId}, positionSide: {positionSide}, stopPrice: {stopPrice}, price: {price}, side: {side}, type: {type}')
     timestamp = int(time.time_ns() / 1000000)
     params = {
