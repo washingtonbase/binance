@@ -17,6 +17,7 @@ import hmac
 import hashlib
 import os
 import pickle
+import copy
 # 加载 .env 文件中的环境变量
 dotenv_path = '.env'
 load_dotenv(dotenv_path)
@@ -45,10 +46,10 @@ price_ws = None
 
 available_margin = 300
 
-class Army():
-    teams: List[Type['Team']] = []
-    current_total_gain = 0
+class Army():    
     def __init__(self):
+        self.current_total_gain = 0
+        self.teams: List[Type['Team']] = []
         self.create_team()
         logging.info('创建了 Team ')
     
@@ -61,15 +62,19 @@ class Army():
             if available_margin > 30:
                 for team in self.teams:
                     team.check_timeout()
-            time.sleep(10)
+            with open('army.pkl', 'wb') as f:
+                pickle.dump(copy.deepcopy(self), f)
+                print(self.__dict__)
+            time.sleep(5)
 
 
 class Team():
-    army: Army
-    workers: List[Type['OrderWorker']] = []
-    retired = False
     def __init__(self, army):
+        self.army: Army = None
+        self.workers: List[Type['OrderWorker']] = []
+        self.retired = False
         self.army = army
+        
         self.create_worker()
     
     def create_worker(self):
@@ -89,17 +94,12 @@ class Team():
 
 
 class OrderWorker():
-    baseline_price = -1
-    timestamp = -1
-    orders = {}
-    order_consts = {}
-    gain = 0.0008
-    stop_loss = 0.05
-    order_ids = {}
-    team = None
-    done = False
-    time_out = False
     def __init__(self, team: Team):
+        self.time_out = False
+        self.done = False
+        self.order_ids = {}
+        self.gain = 0.0008
+        self.stop_loss = 0.05
         self.team = team
         self.baseline_price = get_price()
         self.timestamp = int(time.time_ns() / 10**6)
@@ -432,13 +432,6 @@ def terminate():
         'X-MBX-APIKEY': api_key
     })
 
-army = None
-def inspect():
-    while True:
-        with open('army.pkl', 'wb') as f:
-            pickle.dump(army, f)
-        time.sleep(5)
-
 if __name__ == "__main__":
     
     from datetime import datetime
@@ -459,6 +452,3 @@ if __name__ == "__main__":
     army = Army()
     t_worker_thread = threading.Thread(target=army.start, name = '军队')
     t_worker_thread.start()
-
-    t_inspect_thread = threading.Thread(target=inspect, name='探查')
-    t_inspect_thread.start()
