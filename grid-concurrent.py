@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 import hmac
 import hashlib
 import os
+import pickle
 # 加载 .env 文件中的环境变量
 dotenv_path = '.env'
 load_dotenv(dotenv_path)
@@ -92,8 +93,8 @@ class OrderWorker():
     timestamp = -1
     orders = {}
     order_consts = {}
-    gain = 0.0004
-    stop_loss = 0.1
+    gain = 0.0008
+    stop_loss = 0.05
     order_ids = {}
     team = None
     done = False
@@ -163,6 +164,7 @@ class OrderWorker():
                     
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
                     if self.time_out:
+                        self.time_out = False
                         logging.info(f'终于卖出了, 持续时间 {int(time.time_ns() / 10**6) - self.timestamp}')
                     
                     if f'{open_or_close}-{long_or_short}-{high_or_low}' in ['close-long-low' , 'close-short-high']:
@@ -288,7 +290,7 @@ def trade_stream():
     def on_message(ws, message):
         logging.info(message)
         msg = json.loads(message)
-        if not msg['status'] == '200':
+        if not msg['status'] == 200:
             logging.error(f'这个下单发生了错误 {msg}')
         
 
@@ -429,8 +431,16 @@ def terminate():
     requests.delete('https://fapi.binance.com/fapi/v1/allOpenOrders', params=params, headers = {
         'X-MBX-APIKEY': api_key
     })
-    
+
+army = None
+def inspect():
+    while True:
+        with open('army.pkl', 'wb') as f:
+            pickle.dump(army, f)
+        time.sleep(5)
+
 if __name__ == "__main__":
+    
     from datetime import datetime
     logging.info(datetime.now().strftime("%H:%M:%S"))
 
@@ -449,3 +459,6 @@ if __name__ == "__main__":
     army = Army()
     t_worker_thread = threading.Thread(target=army.start, name = '军队')
     t_worker_thread.start()
+
+    t_inspect_thread = threading.Thread(target=inspect, name='探查')
+    t_inspect_thread.start()
