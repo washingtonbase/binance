@@ -62,9 +62,10 @@ class Army():
             if available_margin > 30:
                 for team in self.teams:
                     team.check_timeout()
+            else:
+                logging.warn('保证金不足')
             with open('army.pkl', 'wb') as f:
                 pickle.dump(copy.deepcopy(self), f)
-                print(self.__dict__)
             time.sleep(5)
 
 
@@ -85,6 +86,9 @@ class Team():
             logging.info(f'创建了 worker {worker.timestamp}')
     
     def check_timeout(self):
+        if self.retired:
+            return
+
         if self.workers[-1]:
             if int(time.time() * 1000) - self.workers[-1].timestamp > 3 * 60 * 1000:
                 self.workers[-1].time_out = True
@@ -98,7 +102,7 @@ class OrderWorker():
         self.time_out = False
         self.done = False
         self.order_ids = {}
-        self.gain = 0.0008
+        self.gain = 0.002
         self.stop_loss = 0.05
         self.team = team
         self.baseline_price = get_price()
@@ -146,6 +150,8 @@ class OrderWorker():
 
         if msg['o']['X'] == 'NEW':
             self.order_ids[client_order_id] = msg['o']['i']
+            if open_or_close == 'open':
+                available_margin -= 15
         
         if msg['o']['X'] == 'FILLED':
             match f'{open_or_close}-{long_or_short}-{high_or_low}':
@@ -153,14 +159,14 @@ class OrderWorker():
                     create_order(*(self.order_consts['close-long-high']))
                     create_order(*(self.order_consts['close-long-low']))
                     cancel_order(f'{self.timestamp}-open-short-mid')
-                    available_margin -= 15
+                    
                     
                     
                 case 'open-short-mid':
                     create_order(*(self.order_consts['close-short-low']))
                     create_order(*(self.order_consts['close-short-high']))
                     cancel_order(f'{self.timestamp}-open-long-mid')
-                    available_margin -= 15
+                    
                     
                 case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
                     if self.time_out:
@@ -245,19 +251,19 @@ class AccountWS:
         global account_ws
         self.observers = []
 
-        listen_key = ''
+        self.listen_key = ''
         BASE_URL = 'https://fapi.binance.com'
 
-        url = f'{BASE_URL}/fapi/v1/listenKey'
-        headers = {
+        self.url = f'{BASE_URL}/fapi/v1/listenKey'
+        self.headers = {
             'X-MBX-APIKEY': api_key
         }
-        response = requests.post(url, headers=headers)
+        response = requests.post(self.url, headers=self.headers)
         if response.status_code == 200:
-            listen_key = response.json()['listenKey']
+            self.listen_key = response.json()['listenKey']
 
         
-        account_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/{listen_key}",
+        account_ws = websocket.WebSocketApp(f"wss://fstream.binance.com/ws/{self.listen_key}",
                                     on_message=self.on_message,
                                     on_error=logging.error,
                                     )
@@ -282,6 +288,10 @@ class AccountWS:
         global account_ws
         account_ws.run_forever()
 
+    def update_listen_key(self):
+        while True:
+            time.sleep(1200)
+            requests.put(self.url, headers=self.headers)
 
 
 def trade_stream():
@@ -440,6 +450,9 @@ if __name__ == "__main__":
     account_stream_instance = AccountWS()
     t_account_stream = threading.Thread(target=account_stream_instance.run, name='账户监听')
     t_account_stream.start()
+    
+    t_update_listenkey = threading.Thread(target=account_stream_instance.update_listen_key, name='更新listenkey')
+    t_update_listenkey.start()
     
     t_price_stream = threading.Thread(target=price_stream, name='订单簿')
     t_price_stream.start()
