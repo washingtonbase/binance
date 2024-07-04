@@ -44,8 +44,6 @@ account_ws = None
 trade_ws = None
 price_ws = None
 
-available_margin = 300
-
 class Army():    
     def __init__(self):
         self.current_total_gain = 0
@@ -57,16 +55,16 @@ class Army():
         self.teams.append(Team(self))
     
     def start(self):
-        global available_margin
+        logging.info(f'初始钱包余额{wallet_stream_instance.get_balance()}')
         while True:
-            if available_margin > 30:
+            if wallet_stream_instance.get_balance() > 30:
                 for team in self.teams:
                     team.check_timeout()
             else:
                 logging.warn('保证金不足')
             with open('army.pkl', 'wb') as f:
                 pickle.dump(copy.deepcopy(self), f)
-            time.sleep(5)
+            time.sleep(60 * 1000)
 
 
 class Team():
@@ -79,8 +77,7 @@ class Team():
         self.create_worker()
     
     def create_worker(self):
-        global available_margin
-        if not self.retired and available_margin > 30:
+        if not self.retired and wallet_stream_instance.get_balance():
             worker = OrderWorker(self)
             self.workers.append(worker)
             logging.info(f'创建了 worker {worker.timestamp}')
@@ -140,7 +137,6 @@ class OrderWorker():
         logging.info(f'{self.timestamp} 工人启动')
     
     def update(self, msg):
-        global available_margin
         client_order_id = msg['o']['c']
         order_timestamp, open_or_close, long_or_short, high_or_low = client_order_id.split('-')
         if not int(order_timestamp) == self.timestamp:
@@ -150,8 +146,6 @@ class OrderWorker():
 
         if msg['o']['X'] == 'NEW':
             self.order_ids[client_order_id] = msg['o']['i']
-            if open_or_close == 'open':
-                available_margin -= 15
         
         if msg['o']['X'] == 'FILLED':
             match f'{open_or_close}-{long_or_short}-{high_or_low}':
@@ -189,11 +183,9 @@ class OrderWorker():
                 logging.error(f'order {self.timestamp} 异常取消，导致无法平仓')
     
     def finish(self):
-        global available_margin
         self.calculate_total_profit()
         self.cancel_rest_orders()
         self.done = True
-        available_margin += 15
         account_stream_instance.unsubscribe(self)
         self.team.create_worker()
         
@@ -295,15 +287,17 @@ class AccountWS:
 
 
 class WalletWS():
-    def __init__(self):
-        self.wallet_ws = ws = websocket.WebSocketApp('wss://ws-fapi.binance.com/ws-fapi/v1')
-        self.condition = threading.Condition()
-        self.current_price = None
+    wallet_ws = ws = websocket.WebSocketApp('wss://ws-fapi.binance.com/ws-fapi/v1')
+    condition = threading.Condition()
+    current_price = None
     
+    def __init__(self):
+        pass
     def get_balance(self):
         def on_message(ws, message):
             with self.condition:
-                self.price = [ass['availableBalance'] for ass in json.loads(message)['result']['assets'] if ass['asset'] == '1000PEPEUSDC'][0]
+                # logging.info(json.loads(message)['result']['assets'])
+                self.current_price = float([ass['availableBalance'] for ass in json.loads(message)['result']['assets'] if ass['asset'] == 'USDC'][0])
                 self.condition.notify()
         self.wallet_ws.on_message = on_message
         
@@ -330,10 +324,9 @@ class WalletWS():
         with self.condition:
             self.condition.wait()
             return self.current_price
-    
-    
-    
-    
+
+    def run(self):
+        self.wallet_ws.run_forever()
 
 def trade_stream():
     global trade_ws
@@ -505,6 +498,10 @@ if __name__ == "__main__":
 
     t_trade_stream = threading.Thread(target=trade_stream, name='交易执行')
     t_trade_stream.start()
+
+    wallet_stream_instance = WalletWS()
+    t_wallet_stream = threading.Thread(target=wallet_stream_instance.run, name='余额监控')
+    t_wallet_stream.start()
     
     time.sleep(3)
     
