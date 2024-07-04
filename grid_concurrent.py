@@ -294,6 +294,47 @@ class AccountWS:
             requests.put(self.url, headers=self.headers)
 
 
+class WalletWS():
+    def __init__(self):
+        self.wallet_ws = ws = websocket.WebSocketApp('wss://ws-fapi.binance.com/ws-fapi/v1')
+        self.condition = threading.Condition()
+        self.current_price = None
+    
+    def get_balance(self):
+        def on_message(ws, message):
+            with self.condition:
+                self.price = [ass['availableBalance'] for ass in json.loads(message)['result']['assets'] if ass['asset'] == '1000PEPEUSDC'][0]
+                self.condition.notify()
+        self.wallet_ws.on_message = on_message
+        
+        timestamp = int(time.time_ns() / 10**6)
+        params = {
+            "apiKey": api_key,
+            "timestamp": timestamp
+            
+        }
+        params = sorted(params.items())
+
+        params = {k: v for k, v in params}
+
+        params['signature'] = hashing(urlencode(params))
+
+        # 构建要发送的 JSON 数据
+        payload = {
+            "id": timestamp,
+            "method": "account.status",
+            "params": params,
+        }
+        self.wallet_ws.send(json.dumps(payload))
+        
+        with self.condition:
+            self.condition.wait()
+            return self.current_price
+    
+    
+    
+    
+
 def trade_stream():
     global trade_ws
 
@@ -333,6 +374,11 @@ def price_stream():
                                 on_close=on_close)
     # ws.on_open = on_open
     price_ws.run_forever()
+
+
+
+        
+
 
 condition = threading.Condition()
 
