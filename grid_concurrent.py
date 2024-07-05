@@ -64,7 +64,7 @@ class Army():
                 logging.warn('保证金不足')
             with open('army.pkl', 'wb') as f:
                 pickle.dump(copy.deepcopy(self), f)
-            time.sleep(60 * 1000)
+            time.sleep(10)
 
 
 class Team():
@@ -87,7 +87,7 @@ class Team():
             return
 
         if self.workers[-1]:
-            if int(time.time() * 1000) - self.workers[-1].timestamp > 3 * 60 * 1000:
+            if int(time.time() * 1000) - self.workers[-1].timestamp > 10 * 1000:
                 self.workers[-1].time_out = True
                 self.retired = True
                 logging.info(f'{self.workers[-1].timestamp} 已过期 {self.workers[-1].baseline_price}')
