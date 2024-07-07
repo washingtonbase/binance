@@ -73,7 +73,6 @@ class Team():
     def __init__(self, army):
         self.army: Army = None
         self.workers: List[Type['OrderWorker']] = []
-        self.retired = False
         self.army = army
         
         self.create_worker()
@@ -85,13 +84,11 @@ class Team():
             logging.info(f'创建了 worker {worker.timestamp}')
     
     def check_timeout(self):
-        if self.retired:
-            return
-
+        
         if self.workers[-1]:
-            if int(time.time() * 1000) - self.workers[-1].timestamp > 10 * 1000:
+            worker = self.workers[-1]
+            if int(time.time() * 1000) - worker.timestamp > 20 * 1000 and worker.status == 'opened':
                 self.workers[-1].time_out = True
-                self.retired = True
                 logging.info(f'{self.workers[-1].timestamp} 已过期 {self.workers[-1].baseline_price}')
                 self.army.create_team()
 
@@ -104,9 +101,9 @@ class OrderWorker():
         self.trigger = 0.0003
         self.trigger_drawback = 0.00002
         self.gain = self.trigger - self.trigger_drawback + 0.0002 + 0.0002 + 0.0005
-        
         self.stop_loss = 0.003
         self.team = team
+        self.status = None 
         self.baseline_price = get_price()
         self.timestamp = int(time.time_ns() / 10**6)
         self.orders = {
@@ -133,7 +130,6 @@ class OrderWorker():
         
         account_stream_instance.subscribe(self)
         self.start()
-                
     def start(self):
         for key_ in [ 'open-long-mid', 'open-short-mid']:
             create_order(*(self.order_consts[key_]))
@@ -191,6 +187,9 @@ class OrderWorker():
         self.done = True
         account_stream_instance.unsubscribe(self)
         self.team.create_worker()
+    
+    def suiside(self):
+        self.cancel_rest_orders()
         
     
     def calculate_total_profit(self):
@@ -508,6 +507,3 @@ if __name__ == "__main__":
     
     time.sleep(3)
     
-    army = Army()
-    t_worker_thread = threading.Thread(target=army.start, name = '军队')
-    t_worker_thread.start()
