@@ -2,7 +2,7 @@
 
 import threading
 import time
-from typing import List
+from typing import List, Literal, Optional
 from rich.console import Console
 from rich.logging import RichHandler
 import logging
@@ -84,48 +84,36 @@ class Team():
             logging.info(f'创建了 worker {worker.timestamp}')
     
     def check_timeout(self):
-        
         if self.workers[-1]:
             worker = self.workers[-1]
-            if int(time.time() * 1000) - worker.timestamp > 20 * 1000 and worker.status == 'opened':
-                self.workers[-1].time_out = True
-                logging.info(f'{self.workers[-1].timestamp} 已过期 {self.workers[-1].baseline_price}')
-                self.army.create_team()
+            if int(time.time() * 1000) - worker.timestamp > 20 * 1000 and not worker.status == 'closed':
+                worker.suiside()
+                logging.info(f'{self.workers[-1].timestamp} 已过期 {self.workers[-1].baseline_price} {worker.status}')
 
 
 class OrderWorker():
     def __init__(self, team: Team):
-        self.time_out = False
-        self.done = False
         self.order_ids = {}
         self.trigger = 0.0003
         self.trigger_drawback = 0.00002
         self.gain = self.trigger - self.trigger_drawback + 0.0002 + 0.0002 + 0.0005
         self.stop_loss = 0.003
         self.team = team
-        self.status = None 
+        self.status: Optional[Literal[None, "opened", "closed", "timeout_to_fill", "timeout_to_close"]] = None 
         self.baseline_price = get_price()
         self.timestamp = int(time.time_ns() / 10**6)
-        self.orders = {
-                'open-long-mid': False,
-                'close-long-high': False,
-                'close-long-low': False,
-            
-                'open-short-mid': False,
-                'close-short-high': False,
-                'close-short-low': False,
-                'ended': False
-            }
         
         value_per_position = 15
         self.order_consts = {
             'open-long-mid': [f'{self.timestamp}-open-long-mid', 'LONG', round(self.baseline_price * (1 + self.trigger )), round(self.baseline_price * (1 + self.trigger - self.trigger_drawback), 7), 'BUY', 'STOP_LIMIT', int(value_per_position/self.baseline_price)],
             'close-long-high': [f'{self.timestamp}-close-long-high', 'LONG', 0, round(self.baseline_price * (1 + self.gain), 7), 'SELL', 'LIMIT', int(value_per_position/self.baseline_price)],
             'close-long-low': [f'{self.timestamp}-close-long-low', 'LONG', round(self.baseline_price * (1 - self.stop_loss), 7), 0, 'SELL', 'STOP_MARKET', int(value_per_position/self.baseline_price)],
+            'close-long-market': [f'{self.timestamp}-close-long-high', 'LONG', 0, 0, 'SELL', 'MARKET', int(value_per_position/self.baseline_price)],
             
             'open-short-mid': [f'{self.timestamp}-open-short-mid', 'SHORT', round(self.baseline_price * (1 - self.trigger )), round(self.baseline_price * (1 - self.trigger + self.trigger_drawback), 7),  'SELL', 'STOP_LIMIT', int(value_per_position/self.baseline_price)],
             'close-short-low': [f'{self.timestamp}-close-short-low', 'SHORT', 0, round(self.baseline_price * (1- self.gain ), 7), 'BUY', 'LIMIT', int(value_per_position/self.baseline_price)],
-            'close-short-high': [f'{self.timestamp}-close-short-high', 'SHORT',round(self.baseline_price * (1 + self.stop_loss), 7), 0, 'BUY', 'STOP_MARKET', int(value_per_position/self.baseline_price)]
+            'close-short-high': [f'{self.timestamp}-close-short-high', 'SHORT',round(self.baseline_price * (1 + self.stop_loss), 7), 0, 'BUY', 'STOP_MARKET', int(value_per_position/self.baseline_price)],
+            'close-short-market': [f'{self.timestamp}-close-short-low', 'SHORT', 0, 0, 'BUY', 'MARKET', int(value_per_position/self.baseline_price)]
         }
         
         account_stream_instance.subscribe(self)
@@ -141,8 +129,6 @@ class OrderWorker():
         if not int(order_timestamp) == self.timestamp:
             return
 
-        self.orders[f'{open_or_close}-{long_or_short}-{high_or_low}'] = msg['o']['X']
-
         if msg['o']['X'] == 'NEW':
             self.order_ids[client_order_id] = msg['o']['i']
         
@@ -152,44 +138,36 @@ class OrderWorker():
                     create_order(*(self.order_consts['close-long-high']))
                     create_order(*(self.order_consts['close-long-low']))
                     cancel_order(f'{self.timestamp}-open-short-mid')
-                    
-                    
-                    
                 case 'open-short-mid':
                     create_order(*(self.order_consts['close-short-low']))
                     create_order(*(self.order_consts['close-short-high']))
                     cancel_order(f'{self.timestamp}-open-long-mid')
-                    
-                    
-                case 'close-long-high' | 'close-short-low' | 'close-long-low' | 'close-short-high':
-                    if self.time_out:
-                        self.time_out = False
-                        logging.info(f'终于卖出了, 持续时间 {int(time.time_ns() / 10**6) - self.timestamp}')
-                    
-                    if f'{open_or_close}-{long_or_short}-{high_or_low}' in ['close-long-low' , 'close-short-high']:
-                        logging.info(f'{self.timestamp} 亏本交易 {long_or_short}')
-                        with open('gain.txt', 'a+') as f:
-                            f.write(f'{self.timestamp} 亏本交易 {long_or_short} \n')
-                    else:
-                        logging.info(f'{self.timestamp} 盈利交易 {long_or_short}')
-                        with open('gain.txt', 'a+') as f:
-                            f.write(f'{self.timestamp} 盈利交易 {long_or_short} \n')
-                    
-                    self.finish()
-
-        if msg['o']['X'] in ['CANCELED', 'EXPIRED']:
-            if f'{open_or_close}-{long_or_short}-{high_or_low}' in ['close-short-low', 'close-long-high']:
-                logging.error(f'order {self.timestamp} 异常取消，导致无法平仓')
+                case _:
+                    self.cleanup('closed')
     
-    def finish(self):
-        self.calculate_total_profit()
-        self.cancel_rest_orders()
-        self.done = True
+    def cleanup(self, status):
+        self.status = status
+        match status:
+            case 'closed':
+                self.calculate_total_profit()
+                self.cancel_rest_orders()
+                
+            case 'timeout_to_fill':
+                self.cancel_rest_orders()
+            
+            case 'timeout_to_close':
+                create_order(*self.order_consts[''])
+
         account_stream_instance.unsubscribe(self)
         self.team.create_worker()
-    
-    def suiside(self):
+
+                
+                
+        self.calculate_total_profit()
         self.cancel_rest_orders()
+        self.status = status
+        account_stream_instance.unsubscribe(self)
+        self.team.create_worker()
         
     
     def calculate_total_profit(self):
