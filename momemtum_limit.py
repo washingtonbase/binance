@@ -46,7 +46,7 @@ account_ws = None
 trade_ws = None
 price_ws = None
 
-class Army():    
+class Army():
     def __init__(self):
         self.current_total_gain = 0
         self.teams: List[Type['Team']] = []
@@ -86,9 +86,13 @@ class Team():
     def check_timeout(self):
         if self.workers[-1]:
             worker = self.workers[-1]
-            if int(time.time() * 1000) - worker.timestamp > 20 * 1000 and not worker.status == 'closed':
-                worker.suiside()
-                logging.info(f'{self.workers[-1].timestamp} 已过期 {self.workers[-1].baseline_price} {worker.status}')
+            match worker.status:
+                case None:
+                    if int(time.time_ns() / 10**6) - worker.timestamp > 20 * 1000:
+                        worker.cleanup('timeout_to_fill')
+                case 'opened':
+                    if int(time.time_ns() / 10**6) - worker.opened_time > 10 * 1000:
+                        worker.cleanup('timeout_to_close')
 
 
 class OrderWorker():
@@ -115,7 +119,8 @@ class OrderWorker():
             'close-short-high': [f'{self.timestamp}-close-short-high', 'SHORT',round(self.baseline_price * (1 + self.stop_loss), 7), 0, 'BUY', 'STOP_MARKET', int(value_per_position/self.baseline_price)],
             'close-short-market': [f'{self.timestamp}-close-short-low', 'SHORT', 0, 0, 'BUY', 'MARKET', int(value_per_position/self.baseline_price)]
         }
-        
+        self.direction = None # None long short
+        self.opened_time = None
         account_stream_instance.subscribe(self)
         self.start()
     def start(self):
@@ -133,12 +138,15 @@ class OrderWorker():
             self.order_ids[client_order_id] = msg['o']['i']
         
         if msg['o']['X'] == 'FILLED':
+            self.opened_time = int(msg['o']['T'])
             match f'{open_or_close}-{long_or_short}-{high_or_low}':
                 case 'open-long-mid':
+                    self.direction = 'long'
                     create_order(*(self.order_consts['close-long-high']))
                     create_order(*(self.order_consts['close-long-low']))
                     cancel_order(f'{self.timestamp}-open-short-mid')
                 case 'open-short-mid':
+                    self.direction = 'short'
                     create_order(*(self.order_consts['close-short-low']))
                     create_order(*(self.order_consts['close-short-high']))
                     cancel_order(f'{self.timestamp}-open-long-mid')
@@ -151,25 +159,17 @@ class OrderWorker():
             case 'closed':
                 self.calculate_total_profit()
                 self.cancel_rest_orders()
+                account_stream_instance.unsubscribe(self)
+                self.team.create_worker()
                 
             case 'timeout_to_fill':
                 self.cancel_rest_orders()
+                account_stream_instance.unsubscribe(self)
+                self.team.create_worker()
             
             case 'timeout_to_close':
-                create_order(*self.order_consts[''])
+                create_order(*self.order_consts[f'close-{self.direction}-market'])
 
-        account_stream_instance.unsubscribe(self)
-        self.team.create_worker()
-
-                
-                
-        self.calculate_total_profit()
-        self.cancel_rest_orders()
-        self.status = status
-        account_stream_instance.unsubscribe(self)
-        self.team.create_worker()
-        
-    
     def calculate_total_profit(self):
         params = {
             'symbol': '1000PEPEUSDC',
@@ -449,17 +449,6 @@ def cancel_order(clientOrderId):
         "params": params,
     }
     trade_ws.send(json.dumps(payload))
-    
-def terminate():
-    params = {
-        'symbol': '1000PEPEUSDC',
-        'timestamp': int(time.time_ns() / 10**6),
-    }
-    
-    params['signature'] = hashing(urlencode(params))
-    requests.delete('https://fapi.binance.com/fapi/v1/allOpenOrders', params=params, headers = {
-        'X-MBX-APIKEY': api_key
-    })
 
 if __name__ == "__main__":
     
