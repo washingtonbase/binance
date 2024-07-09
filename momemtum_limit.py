@@ -78,19 +78,22 @@ class Team():
         self.create_worker()
     
     def create_worker(self):
-        if not self.retired and wallet_stream_instance.get_balance():
+        if wallet_stream_instance.get_balance():
             worker = OrderWorker(self)
             self.workers.append(worker)
             logging.info(f'创建了 worker {worker.timestamp}')
     
     def check_timeout(self):
+        print('check_timeout')
         if self.workers[-1]:
             worker = self.workers[-1]
+            
             match worker.status:
                 case None:
-                    if int(time.time_ns() / 10**6) - worker.timestamp > 20 * 1000:
+                    if int(time.time_ns() / 10**6) - worker.timestamp > 60 * 1000:
                         worker.cleanup('timeout_to_fill')
                 case 'opened':
+                    print(int(time.time_ns() / 10**6) - worker.opened_time - 10*1000)
                     if int(time.time_ns() / 10**6) - worker.opened_time > 10 * 1000:
                         worker.cleanup('timeout_to_close')
 
@@ -109,12 +112,12 @@ class OrderWorker():
         
         value_per_position = 15
         self.order_consts = {
-            'open-long-mid': [f'{self.timestamp}-open-long-mid', 'LONG', round(self.baseline_price * (1 + self.trigger )), round(self.baseline_price * (1 + self.trigger - self.trigger_drawback), 7), 'BUY', 'STOP_LIMIT', int(value_per_position/self.baseline_price)],
+            'open-long-mid': [f'{self.timestamp}-open-long-mid', 'LONG', round(self.baseline_price * (1 + self.trigger), 7), round(self.baseline_price * (1 + self.trigger - self.trigger_drawback), 7), 'BUY', 'STOP', int(value_per_position/self.baseline_price)],
             'close-long-high': [f'{self.timestamp}-close-long-high', 'LONG', 0, round(self.baseline_price * (1 + self.gain), 7), 'SELL', 'LIMIT', int(value_per_position/self.baseline_price)],
             'close-long-low': [f'{self.timestamp}-close-long-low', 'LONG', round(self.baseline_price * (1 - self.stop_loss), 7), 0, 'SELL', 'STOP_MARKET', int(value_per_position/self.baseline_price)],
             'close-long-market': [f'{self.timestamp}-close-long-high', 'LONG', 0, 0, 'SELL', 'MARKET', int(value_per_position/self.baseline_price)],
             
-            'open-short-mid': [f'{self.timestamp}-open-short-mid', 'SHORT', round(self.baseline_price * (1 - self.trigger )), round(self.baseline_price * (1 - self.trigger + self.trigger_drawback), 7),  'SELL', 'STOP_LIMIT', int(value_per_position/self.baseline_price)],
+            'open-short-mid': [f'{self.timestamp}-open-short-mid', 'SHORT', round(self.baseline_price * (1 - self.trigger), 7), round(self.baseline_price * (1 - self.trigger + self.trigger_drawback), 7),  'SELL', 'STOP', int(value_per_position/self.baseline_price)],
             'close-short-low': [f'{self.timestamp}-close-short-low', 'SHORT', 0, round(self.baseline_price * (1- self.gain ), 7), 'BUY', 'LIMIT', int(value_per_position/self.baseline_price)],
             'close-short-high': [f'{self.timestamp}-close-short-high', 'SHORT',round(self.baseline_price * (1 + self.stop_loss), 7), 0, 'BUY', 'STOP_MARKET', int(value_per_position/self.baseline_price)],
             'close-short-market': [f'{self.timestamp}-close-short-low', 'SHORT', 0, 0, 'BUY', 'MARKET', int(value_per_position/self.baseline_price)]
@@ -155,6 +158,7 @@ class OrderWorker():
     
     def cleanup(self, status):
         self.status = status
+        print(status)
         match status:
             case 'closed':
                 self.calculate_total_profit()
@@ -474,3 +478,6 @@ if __name__ == "__main__":
     
     time.sleep(3)
     
+    army = Army()
+    t_worker_thread = threading.Thread(target=army.start, name = '军队')
+    t_worker_thread.start()
