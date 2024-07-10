@@ -93,7 +93,6 @@ class Team():
                     if int(time.time_ns() / 10**6) - worker.timestamp > 60 * 1000:
                         worker.cleanup('timeout_to_fill')
                 case 'opened':
-                    print(int(time.time_ns() / 10**6) - worker.opened_time - 10*1000)
                     if int(time.time_ns() / 10**6) - worker.opened_time > 10 * 1000:
                         worker.cleanup('timeout_to_close')
 
@@ -144,11 +143,13 @@ class OrderWorker():
             self.opened_time = int(msg['o']['T'])
             match f'{open_or_close}-{long_or_short}-{high_or_low}':
                 case 'open-long-mid':
+                    self.status = 'opened'
                     self.direction = 'long'
                     create_order(*(self.order_consts['close-long-high']))
                     create_order(*(self.order_consts['close-long-low']))
                     cancel_order(f'{self.timestamp}-open-short-mid')
                 case 'open-short-mid':
+                    self.status = 'opened'
                     self.direction = 'short'
                     create_order(*(self.order_consts['close-short-low']))
                     create_order(*(self.order_consts['close-short-high']))
