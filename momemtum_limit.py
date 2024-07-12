@@ -59,14 +59,16 @@ class Army():
     def start(self):
         logging.info(f'初始钱包余额{wallet_stream_instance.get_balance()}')
         while True:
-            if wallet_stream_instance.get_balance() > 30:
+            # if wallet_stream_instance.get_balance() > 30:
+            if True:
                 for team in self.teams:
                     team.check_timeout()
             else:
                 logging.warn('保证金不足')
-            with open('army.pkl', 'wb') as f:
-                pickle.dump(copy.deepcopy(self), f)
-            time.sleep(10)
+            # with open('army.pkl', 'wb') as f:
+                # pickle.dump(copy.deepcopy(self), f)
+                
+            time.sleep(3)
 
 
 class Team():
@@ -89,19 +91,19 @@ class Team():
             
             match worker.status:
                 case None:
-                    if int(time.time_ns() / 10**6) - worker.timestamp > 20 * 1000:
+                    if int(time.time_ns() / 10**6) - worker.timestamp > 15 * 1000:
                         worker.cleanup('timeout_to_fill')
                 case 'opened':
-                    if int(time.time_ns() / 10**6) - worker.opened_time > 10 * 1000:
+                    if int(time.time_ns() / 10**6) - worker.opened_time > 180 * 1000:
                         worker.cleanup('timeout_to_close')
 
 
 class OrderWorker():
     def __init__(self, team: Team):
         self.order_ids = {}
-        self.trigger = 0.0003
+        self.trigger = 0.0005
         self.trigger_drawback = 0.00002
-        self.gain = self.trigger - self.trigger_drawback + 0.0002 + 0.0002 + 0.0005
+        self.gain = self.trigger - self.trigger_drawback + 0.0002 + 0.0002 + 0.0008
         self.stop_loss = 0.003
         self.team = team
         self.status: Optional[Literal[None, "opened", "closed", "timeout_to_fill", "timeout_to_close"]] = None 
@@ -161,6 +163,7 @@ class OrderWorker():
         print(status)
         match status:
             case 'closed':
+                logging.info(f'{self.timestamp} 已关闭')
                 self.calculate_total_profit()
                 self.cancel_rest_orders()
                 account_stream_instance.unsubscribe(self)
