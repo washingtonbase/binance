@@ -103,7 +103,7 @@ class OrderWorker():
         self.order_ids = {}
         self.trigger = 0.0005
         self.trigger_drawback = 0.00002
-        self.gain = self.trigger - self.trigger_drawback + 0.0002 + 0.0002 + 0.0008
+        self.gain = self.trigger - self.trigger_drawback + 0.0002 + 0.0002 + 0.0004
         self.stop_loss = 0.003
         self.team = team
         self.status: Optional[Literal[None, "opened", "closed", "timeout_to_fill", "timeout_to_close"]] = None 
@@ -127,7 +127,10 @@ class OrderWorker():
         account_stream_instance.subscribe(self)
         self.start()
     def start(self):
-        for key_ in [ 'open-long-mid', 'open-short-mid']:
+        for key_ in [ 
+                     'open-long-mid', 
+                     'open-short-mid'
+                     ]:
             create_order(*(self.order_consts[key_]))
         logging.info(f'{self.timestamp} 工人启动')
     
@@ -190,15 +193,21 @@ class OrderWorker():
         }).json()
         
         total_realized_pnl = 0
-        total_commission = 0
         total_profit = 0
         for order in all_orders:
             if order['orderId'] in self.order_ids.values():
-                total_realized_pnl += float(order['realizedPnl'])
-                total_commission += float(order['commission'])
+                side = order['side']
+                positionSide = order['positionSide']
+                quoteQty = float(order['quoteQty'])
+                commission = float(order['commission'])
                 
-                total_profit = total_realized_pnl - total_commission
-        
+                if (side == 'BUY' and positionSide == 'LONG') or (side == 'BUY' and positionSide == 'SHORT'):
+                    total_profit -= quoteQty
+                if (side == 'SELL' and positionSide == 'SHORT') or (side == 'SELL' and positionSide == 'LONG'):
+                    total_profit += quoteQty
+                
+                total_profit -= commission
+
         with open('gain.txt', 'a+') as f:
             f.write(f'{self.timestamp} 收益: {total_profit} \n')
             logging.info(f'{self.timestamp} 收益: {total_profit} \n')
